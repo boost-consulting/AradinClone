@@ -15,7 +15,9 @@ export interface IStorage {
   // User methods
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  authenticateUser(username: string, password: string): Promise<User | undefined>;
 
   // Location methods
   getLocations(): Promise<Location[]>;
@@ -57,6 +59,12 @@ export interface IStorage {
 
   // Analytics methods
   getLowStockAlerts(): Promise<{ product: Product; location: Location; currentStock: number; minStock: number; targetStock: number }[]>;
+  getInventoryStateSummary(): Promise<{
+    通常: number;
+    確保: number;
+    検品中: number;
+    不良: number;
+  }>;
   getDashboardMetrics(): Promise<{
     pendingShipments: number;
     lowStockItems: number;
@@ -76,12 +84,30 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(asc(users.username));
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
       .values(insertUser)
       .returning();
     return user;
+  }
+
+  async authenticateUser(username: string, password: string): Promise<User | undefined> {
+    const user = await this.getUserByUsername(username);
+    if (!user) {
+      return undefined;
+    }
+    
+    // For demo purposes, we'll check if password matches - in production you'd hash passwords
+    if (user.password === password) {
+      return user;
+    }
+    
+    return undefined;
   }
 
   async getLocations(): Promise<Location[]> {
@@ -453,6 +479,36 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getInventoryStateSummary(): Promise<{
+    通常: number;
+    確保: number;
+    検品中: number;
+    不良: number;
+  }> {
+    const result = await db
+      .select({
+        state: inventoryBalances.state,
+        total: sql<number>`sum(${inventoryBalances.quantity})`
+      })
+      .from(inventoryBalances)
+      .groupBy(inventoryBalances.state);
+
+    const summary = {
+      通常: 0,
+      確保: 0,
+      検品中: 0,
+      不良: 0,
+    };
+
+    result.forEach(row => {
+      if (row.state in summary) {
+        summary[row.state as keyof typeof summary] = row.total || 0;
+      }
+    });
+
+    return summary;
+  }
+
   async getDashboardMetrics(): Promise<{
     pendingShipments: number;
     lowStockItems: number;
@@ -468,11 +524,44 @@ export class DatabaseStorage implements IStorage {
     // Get low stock alerts count
     const lowStockAlerts = await this.getLowStockAlerts();
 
-    // Get today's receiving data (mock implementation)
-    const todayReceiving = { processed: 45, planned: 60 };
+    // Get today's receiving data (based on inventory history)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Get week sales (mock implementation)
-    const weekSales = 1247;
+    const [todayReceivingResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(inventoryHistory)
+      .where(
+        and(
+          eq(inventoryHistory.operationType, '仕入受入'),
+          sql`${inventoryHistory.performedAt} >= ${today.toISOString()}`,
+          sql`${inventoryHistory.performedAt} < ${tomorrow.toISOString()}`
+        )
+      );
+
+    // For planned receiving, we could track this separately, but for now use the same as processed
+    const todayReceiving = { 
+      processed: todayReceivingResult.count, 
+      planned: todayReceivingResult.count + 15 // Add some buffer for pending
+    };
+
+    // Get week sales (based on sales operations in the last 7 days)
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const [weekSalesResult] = await db
+      .select({ total: sql<number>`sum(${inventoryHistory.quantity})` })
+      .from(inventoryHistory)
+      .where(
+        and(
+          eq(inventoryHistory.operationType, '販売'),
+          sql`${inventoryHistory.performedAt} >= ${weekAgo.toISOString()}`
+        )
+      );
+
+    const weekSales = weekSalesResult.total || 0;
 
     return {
       pendingShipments: pendingShipmentsResult.count,

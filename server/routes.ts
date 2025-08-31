@@ -1,11 +1,38 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
   insertProductSchema, insertLocationSchema, insertShippingInstructionSchema,
-  insertReplenishmentCriteriaSchema, insertInventoryHistorySchema 
+  insertReplenishmentCriteriaSchema, insertInventoryHistorySchema, insertUserSchema 
 } from "@shared/schema";
 import { z } from "zod";
+
+// Extend Express Session interface
+declare module "express-session" {
+  interface SessionData {
+    userId?: string;
+    role?: string;
+    storeId?: number;
+  }
+}
+
+// Authentication middleware
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  next();
+}
+
+// Authorization middleware for different roles
+function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session.role || !roles.includes(req.session.role)) {
+      return res.status(403).json({ message: "Insufficient permissions" });
+    }
+    next();
+  };
+}
 
 // Request schemas
 const saleSchema = z.object({
@@ -28,7 +55,81 @@ const adjustInventorySchema = z.object({
   saleAmount: z.number().optional(),
 });
 
+const loginSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Authentication routes
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = loginSchema.parse(req.body);
+      const user = await storage.authenticateUser(username, password);
+      
+      if (!user) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      
+      req.session.userId = user.id;
+      req.session.role = user.role;
+      req.session.storeId = user.storeId || undefined;
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          username: user.username, 
+          role: user.role, 
+          storeId: user.storeId 
+        } 
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Logout failed" });
+      }
+      res.clearCookie('connect.sid');
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    res.json({
+      userId: req.session.userId,
+      role: req.session.role,
+      storeId: req.session.storeId
+    });
+  });
+
+  // User management routes
+  app.get("/api/users", requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.post("/api/users", requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+      const userData = insertUserSchema.parse(req.body);
+      const user = await storage.createUser(userData);
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create user" });
+    }
+  });
+
   // Dashboard metrics
   app.get("/api/dashboard/metrics", async (req, res) => {
     try {
@@ -36,6 +137,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(metrics);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch dashboard metrics" });
+    }
+  });
+
+  // Inventory state summary
+  app.get("/api/dashboard/inventory-summary", async (req, res) => {
+    try {
+      const summary = await storage.getInventoryStateSummary();
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch inventory state summary" });
     }
   });
 

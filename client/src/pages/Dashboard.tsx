@@ -6,8 +6,11 @@ import { ArrowUp, Truck, Package, AlertTriangle, TrendingUp, ArrowRight } from "
 import { DashboardMetrics, LowStockAlert, PendingShipment } from "@/lib/types";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+import { useLocation } from "wouter";
 
 export default function Dashboard() {
+  const [, setLocation] = useLocation();
+  
   const { data: metrics, isLoading: metricsLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
     refetchInterval: 30000,
@@ -23,9 +26,29 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  const { data: inventorySummary, isLoading: summaryLoading } = useQuery<{
+    通常: number;
+    確保: number;
+    検品中: number;
+    不良: number;
+  }>({
+    queryKey: ["/api/dashboard/inventory-summary"],
+    refetchInterval: 30000,
+  });
+
   const today = format(new Date(), 'yyyy年M月d日 (E)', { locale: ja });
 
-  if (metricsLoading || alertsLoading || shipmentsLoading) {
+  // Navigation handlers
+  const handlePendingShipmentsClick = () => setLocation('/warehouse');
+  const handleReceivingClick = () => setLocation('/warehouse');
+  const handleLowStockClick = () => setLocation('/shipping');
+  const handleSalesClick = () => setLocation('/sales');
+  const handleQuickReceiving = () => setLocation('/warehouse');
+  const handleQuickSales = () => setLocation('/sales');
+  const handleQuickShipping = () => setLocation('/shipping');
+  const handleQuickReturns = () => setLocation('/returns');
+
+  if (metricsLoading || alertsLoading || shipmentsLoading || summaryLoading) {
     return (
       <div data-testid="dashboard-loading">
         <div className="mb-6">
@@ -49,7 +72,7 @@ export default function Dashboard() {
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {/* Pending Shipments */}
-        <Card className="metric-card" data-testid="card-pending-shipments">
+        <Card className="metric-card cursor-pointer hover:bg-muted/50 transition-colors" data-testid="card-pending-shipments" onClick={handlePendingShipmentsClick}>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">未処理出荷指示</CardTitle>
             <Truck className="h-4 w-4 text-accent" />
@@ -76,7 +99,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Today's Receiving */}
-        <Card className="metric-card" data-testid="card-receiving">
+        <Card className="metric-card cursor-pointer hover:bg-muted/50 transition-colors" data-testid="card-receiving" onClick={handleReceivingClick}>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">本日の仕入受入</CardTitle>
             <Package className="h-4 w-4 text-primary" />
@@ -96,7 +119,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Low Stock Alerts */}
-        <Card className="metric-card" data-testid="card-low-stock">
+        <Card className="metric-card cursor-pointer hover:bg-muted/50 transition-colors" data-testid="card-low-stock" onClick={handleLowStockClick}>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">在庫少数アラート</CardTitle>
             <AlertTriangle className="h-4 w-4 text-destructive" />
@@ -117,7 +140,7 @@ export default function Dashboard() {
         </Card>
 
         {/* 7-Day Sales */}
-        <Card className="metric-card" data-testid="card-sales">
+        <Card className="metric-card cursor-pointer hover:bg-muted/50 transition-colors" data-testid="card-sales" onClick={handleSalesClick}>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">直近7日の販売</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-600" />
@@ -185,7 +208,7 @@ export default function Dashboard() {
               </table>
             </div>
             <div className="pt-4 border-t border-border mt-4">
-              <Button variant="link" className="text-sm p-0" data-testid="button-view-all-shipments">
+              <Button variant="link" className="text-sm p-0" onClick={() => setLocation('/warehouse')} data-testid="button-view-all-shipments">
                 すべての出荷指示を表示 <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
@@ -236,7 +259,7 @@ export default function Dashboard() {
               </table>
             </div>
             <div className="pt-4 border-t border-border mt-4">
-              <Button variant="link" className="text-sm p-0" data-testid="button-view-all-alerts">
+              <Button variant="link" className="text-sm p-0" onClick={() => setLocation('/shipping')} data-testid="button-view-all-alerts">
                 すべてのアラートを表示 <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
@@ -253,22 +276,22 @@ export default function Dashboard() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-4 border border-green-200 rounded-lg bg-green-50" data-testid="summary-normal">
-              <div className="text-2xl font-bold text-green-800">2,847</div>
+              <div className="text-2xl font-bold text-green-800">{(inventorySummary?.通常 || 0).toLocaleString()}</div>
               <div className="text-sm font-medium text-green-700">通常</div>
               <div className="text-xs text-green-600">販売・出荷可能</div>
             </div>
             <div className="text-center p-4 border border-blue-200 rounded-lg bg-blue-50" data-testid="summary-reserved">
-              <div className="text-2xl font-bold text-blue-800">156</div>
+              <div className="text-2xl font-bold text-blue-800">{(inventorySummary?.確保 || 0).toLocaleString()}</div>
               <div className="text-sm font-medium text-blue-700">確保</div>
               <div className="text-xs text-blue-600">出荷予定分</div>
             </div>
             <div className="text-center p-4 border border-yellow-200 rounded-lg bg-yellow-50" data-testid="summary-inspection">
-              <div className="text-2xl font-bold text-yellow-800">89</div>
+              <div className="text-2xl font-bold text-yellow-800">{(inventorySummary?.検品中 || 0).toLocaleString()}</div>
               <div className="text-sm font-medium text-yellow-700">検品中</div>
               <div className="text-xs text-yellow-600">確認待ち</div>
             </div>
             <div className="text-center p-4 border border-red-200 rounded-lg bg-red-50" data-testid="summary-defective">
-              <div className="text-2xl font-bold text-red-800">23</div>
+              <div className="text-2xl font-bold text-red-800">{(inventorySummary?.不良 || 0).toLocaleString()}</div>
               <div className="text-sm font-medium text-red-700">不良</div>
               <div className="text-xs text-red-600">販売不可</div>
             </div>
@@ -287,6 +310,7 @@ export default function Dashboard() {
             <Button 
               variant="outline" 
               className="flex flex-col items-center p-4 h-auto hover:bg-muted/50 hover:border-primary/50"
+              onClick={handleQuickReceiving}
               data-testid="button-quick-receiving"
             >
               <Package className="h-6 w-6 text-primary mb-2" />
@@ -295,6 +319,7 @@ export default function Dashboard() {
             <Button 
               variant="outline" 
               className="flex flex-col items-center p-4 h-auto hover:bg-muted/50 hover:border-primary/50"
+              onClick={handleQuickSales}
               data-testid="button-quick-sales"
             >
               <TrendingUp className="h-6 w-6 text-green-600 mb-2" />
@@ -303,6 +328,7 @@ export default function Dashboard() {
             <Button 
               variant="outline" 
               className="flex flex-col items-center p-4 h-auto hover:bg-muted/50 hover:border-primary/50"
+              onClick={handleQuickShipping}
               data-testid="button-quick-shipping"
             >
               <Truck className="h-6 w-6 text-accent mb-2" />
@@ -311,6 +337,7 @@ export default function Dashboard() {
             <Button 
               variant="outline" 
               className="flex flex-col items-center p-4 h-auto hover:bg-muted/50 hover:border-primary/50"
+              onClick={handleQuickReturns}
               data-testid="button-quick-returns"
             >
               <ArrowUp className="h-6 w-6 text-orange-500 mb-2" />
