@@ -60,11 +60,17 @@ export default function Dashboard() {
             </div>
             <div className="text-xs text-muted-foreground">期限近順</div>
             <div className="space-y-1">
-              {pendingShipments?.slice(0, 3).map((shipment) => (
-                <div key={shipment.id} className="text-xs text-destructive hover:underline cursor-pointer" data-testid={`link-shipment-${shipment.id}`}>
-                  {shipment.toLocation.name}: {shipment.product.sku} ({shipment.requestedDate ? format(new Date(shipment.requestedDate), 'M/d') : ''}期限)
+              {pendingShipments && pendingShipments.length > 0 ? (
+                pendingShipments.slice(0, 3).map((shipment) => (
+                  <div key={shipment.id} className="text-xs text-destructive hover:underline cursor-pointer" data-testid={`link-shipment-${shipment.id}`}>
+                    {shipment.toLocation.name}: {shipment.product.sku} ({shipment.requestedDate ? format(new Date(shipment.requestedDate), 'M/d') : ''}期限)
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs text-muted-foreground" data-testid="empty-pending-shipments">
+                  現在、未処理の出荷指示はありません
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
@@ -150,19 +156,31 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {pendingShipments?.map((shipment) => (
-                    <tr key={shipment.id} className="table-hover cursor-pointer" data-testid={`row-shipment-${shipment.id}`}>
-                      <td className="px-4 py-3 text-sm">{shipment.toLocation.name}</td>
-                      <td className="px-4 py-3 text-sm font-medium">{shipment.product.sku}</td>
-                      <td className="px-4 py-3 text-sm">{shipment.quantity}</td>
-                      <td className="px-4 py-3 text-sm text-destructive font-medium">
-                        {shipment.requestedDate ? format(new Date(shipment.requestedDate), 'M/d') : '未設定'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {format(new Date(shipment.createdAt), 'M/d HH:mm')}
+                  {pendingShipments && pendingShipments.length > 0 ? (
+                    pendingShipments.map((shipment) => (
+                      <tr key={shipment.id} className="table-hover cursor-pointer" data-testid={`row-shipment-${shipment.id}`}>
+                        <td className="px-4 py-3 text-sm">{shipment.toLocation.name}</td>
+                        <td className="px-4 py-3 text-sm font-medium">{shipment.product.sku}</td>
+                        <td className="px-4 py-3 text-sm">{shipment.quantity}</td>
+                        <td className="px-4 py-3 text-sm text-destructive font-medium">
+                          {shipment.requestedDate ? format(new Date(shipment.requestedDate), 'M/d') : '未設定'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                          {format(new Date(shipment.createdAt), 'M/d HH:mm')}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground" data-testid="empty-pending-shipments-table">
+                        <div className="flex flex-col items-center">
+                          <Truck className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                          <p>現在、未処理の出荷指示はありません</p>
+                          <p className="text-xs mt-1">新しい出荷指示が作成されると、ここに表示されます</p>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -193,15 +211,27 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {lowStockAlerts?.map((alert) => (
-                    <tr key={`${alert.product.id}-${alert.location.id}`} className="table-hover cursor-pointer bg-red-50" data-testid={`row-alert-${alert.product.sku}-${alert.location.id}`}>
-                      <td className="px-4 py-3 text-sm font-medium">{alert.product.sku}</td>
-                      <td className="px-4 py-3 text-sm">{alert.location.name}</td>
-                      <td className="px-4 py-3 text-sm text-destructive font-bold">{alert.currentStock}</td>
-                      <td className="px-4 py-3 text-sm">{alert.minStock}</td>
-                      <td className="px-4 py-3 text-sm">{alert.targetStock}</td>
+                  {lowStockAlerts && lowStockAlerts.length > 0 ? (
+                    lowStockAlerts.map((alert) => (
+                      <tr key={`${alert.product.id}-${alert.location.id}`} className="table-hover cursor-pointer bg-red-50" data-testid={`row-alert-${alert.product.sku}-${alert.location.id}`}>
+                        <td className="px-4 py-3 text-sm font-medium">{alert.product.sku}</td>
+                        <td className="px-4 py-3 text-sm">{alert.location.name}</td>
+                        <td className="px-4 py-3 text-sm text-destructive font-bold">{alert.currentStock}</td>
+                        <td className="px-4 py-3 text-sm">{alert.minStock}</td>
+                        <td className="px-4 py-3 text-sm">{alert.targetStock}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground" data-testid="empty-low-stock-alerts">
+                        <div className="flex flex-col items-center">
+                          <Package className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                          <p>現在、在庫不足のアラートはありません</p>
+                          <p className="text-xs mt-1">すべての商品が適正在庫を維持しています</p>
+                        </div>
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

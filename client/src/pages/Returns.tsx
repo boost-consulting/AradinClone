@@ -310,7 +310,11 @@ export default function Returns() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-muted-foreground text-center">返品可能な在庫がありません</p>
+                    <div className="flex flex-col items-center py-8 text-muted-foreground" data-testid="empty-return-inventory">
+                      <Package className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                      <h4 className="font-medium mb-1">返品可能な在庫がありません</h4>
+                      <p className="text-xs text-center">通常状態の在庫がある場合のみ返品処理ができます</p>
+                    </div>
                   )}
                 </div>
               </CardContent>

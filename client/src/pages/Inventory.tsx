@@ -48,8 +48,8 @@ interface InventoryHistory {
 
 export default function Inventory() {
   const [searchSku, setSearchSku] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState("");
-  const [selectedState, setSelectedState] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState("all");
+  const [selectedState, setSelectedState] = useState("all");
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<{
     productId: number;
@@ -97,10 +97,10 @@ export default function Inventory() {
     if (searchSku && !item.product.sku.toLowerCase().includes(searchSku.toLowerCase())) {
       return false;
     }
-    if (selectedLocation && item.location.name !== selectedLocation) {
+    if (selectedLocation !== "all" && item.location.name !== selectedLocation) {
       return false;
     }
-    if (selectedState && !(item.states[selectedState] > 0)) {
+    if (selectedState !== "all" && !(item.states[selectedState] > 0)) {
       return false;
     }
     // TODO: Implement low stock filtering based on replenishment criteria
@@ -163,7 +163,7 @@ export default function Inventory() {
                   <SelectValue placeholder="すべての場所" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">すべての場所</SelectItem>
+                  <SelectItem value="all">すべての場所</SelectItem>
                   {locations?.map((location: any) => (
                     <SelectItem key={location.id} value={location.name}>
                       {location.name}
@@ -180,7 +180,7 @@ export default function Inventory() {
                   <SelectValue placeholder="すべての状態" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">すべての状態</SelectItem>
+                  <SelectItem value="all">すべての状態</SelectItem>
                   <SelectItem value="通常">通常</SelectItem>
                   <SelectItem value="確保">確保</SelectItem>
                   <SelectItem value="検品中">検品中</SelectItem>
@@ -232,48 +232,70 @@ export default function Inventory() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredInventory.map((item: any) => (
-                  <tr key={`${item.product.id}-${item.location.id}`} className="table-hover" data-testid={`row-inventory-${item.product.sku}-${item.location.id}`}>
-                    <td className="px-4 py-3 text-sm font-medium">
-                      <div>
-                        <div className="font-medium">{item.product.sku}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.product.modelName} - {item.product.color} - {item.product.size}
+                {filteredInventory.length > 0 ? (
+                  filteredInventory.map((item: any) => (
+                    <tr key={`${item.product.id}-${item.location.id}`} className="table-hover" data-testid={`row-inventory-${item.product.sku}-${item.location.id}`}>
+                      <td className="px-4 py-3 text-sm font-medium">
+                        <div>
+                          <div className="font-medium">{item.product.sku}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {item.product.modelName} - {item.product.color} - {item.product.size}
+                          </div>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{item.location.name}</td>
+                      <td className="px-4 py-3 text-sm font-bold text-green-600" data-testid={`qty-normal-${item.product.sku}-${item.location.id}`}>
+                        {item.states['通常'] || 0}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-blue-600" data-testid={`qty-reserved-${item.product.sku}-${item.location.id}`}>
+                        {item.states['確保'] || 0}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-yellow-600" data-testid={`qty-inspection-${item.product.sku}-${item.location.id}`}>
+                        {item.states['検品中'] || 0}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-red-600" data-testid={`qty-defective-${item.product.sku}-${item.location.id}`}>
+                        {item.states['不良'] || 0}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold" data-testid={`qty-total-${item.product.sku}-${item.location.id}`}>
+                        {item.total}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {formatDate(item.lastUpdated)}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDetailModal(item.product.id, item.location.id, item.product.sku, item.location.name)}
+                          data-testid={`button-detail-${item.product.sku}-${item.location.id}`}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          明細
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground" data-testid="empty-inventory">
+                      <div className="flex flex-col items-center">
+                        <Package className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                        <h3 className="font-medium text-lg mb-2">在庫データが見つかりません</h3>
+                        {searchSku || selectedLocation !== "all" || selectedState !== "all" || showLowStockOnly ? (
+                          <div className="text-sm space-y-1">
+                            <p>検索条件に一致する在庫がありません</p>
+                            <p className="text-xs">フィルターを調整して再度検索してください</p>
+                          </div>
+                        ) : (
+                          <div className="text-sm space-y-1">
+                            <p>まだ在庫データが登録されていません</p>
+                            <p className="text-xs">仕入受入を行って在庫を追加してください</p>
+                          </div>
+                        )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm">{item.location.name}</td>
-                    <td className="px-4 py-3 text-sm font-bold text-green-600" data-testid={`qty-normal-${item.product.sku}-${item.location.id}`}>
-                      {item.states['通常'] || 0}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-bold text-blue-600" data-testid={`qty-reserved-${item.product.sku}-${item.location.id}`}>
-                      {item.states['確保'] || 0}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-bold text-yellow-600" data-testid={`qty-inspection-${item.product.sku}-${item.location.id}`}>
-                      {item.states['検品中'] || 0}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-bold text-red-600" data-testid={`qty-defective-${item.product.sku}-${item.location.id}`}>
-                      {item.states['不良'] || 0}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-bold" data-testid={`qty-total-${item.product.sku}-${item.location.id}`}>
-                      {item.total}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {formatDate(item.lastUpdated)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDetailModal(item.product.id, item.location.id, item.product.sku, item.location.name)}
-                        data-testid={`button-detail-${item.product.sku}-${item.location.id}`}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        明細
-                      </Button>
-                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

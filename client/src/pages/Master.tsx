@@ -289,36 +289,58 @@ export default function Master() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredProducts.map((product) => (
-                            <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
-                              <TableCell className="font-medium">{product.sku}</TableCell>
-                              <TableCell>{product.modelName}</TableCell>
-                              <TableCell>{product.color}</TableCell>
-                              <TableCell>{product.size}</TableCell>
-                              <TableCell>¥{parseInt(product.retailPrice).toLocaleString()}</TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditingProduct(product);
-                                    setProductForm({
-                                      sku: product.sku,
-                                      modelName: product.modelName,
-                                      color: product.color,
-                                      size: product.size,
-                                      category: product.category || "",
-                                      retailPrice: product.retailPrice,
-                                      costPrice: product.costPrice || "",
-                                    });
-                                  }}
-                                  data-testid={`button-edit-product-${product.id}`}
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </Button>
+                          {filteredProducts.length > 0 ? (
+                            filteredProducts.map((product) => (
+                              <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
+                                <TableCell className="font-medium">{product.sku}</TableCell>
+                                <TableCell>{product.modelName}</TableCell>
+                                <TableCell>{product.color}</TableCell>
+                                <TableCell>{product.size}</TableCell>
+                                <TableCell>¥{parseInt(product.retailPrice).toLocaleString()}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingProduct(product);
+                                      setProductForm({
+                                        sku: product.sku,
+                                        modelName: product.modelName,
+                                        color: product.color,
+                                        size: product.size,
+                                        category: product.category || "",
+                                        retailPrice: product.retailPrice,
+                                        costPrice: product.costPrice || "",
+                                      });
+                                    }}
+                                    data-testid={`button-edit-product-${product.id}`}
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={6} className="px-4 py-12 text-center text-muted-foreground" data-testid="empty-products">
+                                <div className="flex flex-col items-center">
+                                  <Package className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                                  <h3 className="font-medium text-lg mb-2">商品データがありません</h3>
+                                  {searchProduct ? (
+                                    <div className="text-sm space-y-1">
+                                      <p>検索条件に一致する商品がありません</p>
+                                      <p className="text-xs">別のキーワードで検索してください</p>
+                                    </div>
+                                  ) : (
+                                    <div className="text-sm space-y-1">
+                                      <p>まだ商品が登録されていません</p>
+                                      <p className="text-xs">右側のフォームから新しい商品を登録してください</p>
+                                    </div>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
-                          ))}
+                          )}
                         </TableBody>
                       </Table>
                     </div>
@@ -450,37 +472,45 @@ export default function Master() {
                   <p>読み込み中...</p>
                 ) : (
                   <div className="space-y-2">
-                    {locations?.map((location) => (
-                      <div 
-                        key={location.id}
-                        className="border border-border rounded-lg p-3 hover:bg-muted/50 cursor-pointer"
-                        onClick={() => {
-                          setEditingLocation(location);
-                          setLocationForm({
-                            name: location.name,
-                            type: location.type as "store" | "warehouse",
-                            displayOrder: location.displayOrder.toString(),
-                          });
-                        }}
-                        data-testid={`location-item-${location.id}`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <div className="font-medium">{location.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {location.type === 'store' ? '店舗' : '倉庫'} - 表示順: {location.displayOrder}
+                    {locations && locations.length > 0 ? (
+                      locations.map((location) => (
+                        <div 
+                          key={location.id}
+                          className="border border-border rounded-lg p-3 hover:bg-muted/50 cursor-pointer"
+                          onClick={() => {
+                            setEditingLocation(location);
+                            setLocationForm({
+                              name: location.name,
+                              type: location.type as "store" | "warehouse",
+                              displayOrder: location.displayOrder.toString(),
+                            });
+                          }}
+                          data-testid={`location-item-${location.id}`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <div className="font-medium">{location.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {location.type === 'store' ? '店舗' : '倉庫'} - 表示順: {location.displayOrder}
+                              </div>
                             </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              data-testid={`button-edit-location-${location.id}`}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            data-testid={`button-edit-location-${location.id}`}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
                         </div>
+                      ))
+                    ) : (
+                      <div className="flex flex-col items-center py-8 text-muted-foreground" data-testid="empty-locations">
+                        <MapPin className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                        <h4 className="font-medium mb-1">場所データがありません</h4>
+                        <p className="text-xs text-center">倉庫や店舗の場所を登録してください</p>
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -570,42 +600,50 @@ export default function Master() {
                   <p>読み込み中...</p>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {replenishmentCriteria?.map((criteria) => (
-                      <div 
-                        key={criteria.id}
-                        className="border border-border rounded-lg p-3 hover:bg-muted/50 cursor-pointer"
-                        onClick={() => {
-                          setEditingCriteria(criteria);
-                          setCriteriaForm({
-                            productId: criteria.productId.toString(),
-                            locationId: criteria.locationId.toString(),
-                            minStock: criteria.minStock.toString(),
-                            targetStock: criteria.targetStock.toString(),
-                            standardReplenishment: criteria.standardReplenishment.toString(),
-                          });
-                        }}
-                        data-testid={`criteria-item-${criteria.id}`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium">{criteria.product.sku}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {criteria.location.name}
+                    {replenishmentCriteria && replenishmentCriteria.length > 0 ? (
+                      replenishmentCriteria.map((criteria) => (
+                        <div 
+                          key={criteria.id}
+                          className="border border-border rounded-lg p-3 hover:bg-muted/50 cursor-pointer"
+                          onClick={() => {
+                            setEditingCriteria(criteria);
+                            setCriteriaForm({
+                              productId: criteria.productId.toString(),
+                              locationId: criteria.locationId.toString(),
+                              minStock: criteria.minStock.toString(),
+                              targetStock: criteria.targetStock.toString(),
+                              standardReplenishment: criteria.standardReplenishment.toString(),
+                            });
+                          }}
+                          data-testid={`criteria-item-${criteria.id}`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium">{criteria.product.sku}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {criteria.location.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                下限: {criteria.minStock} | 基準: {criteria.targetStock} | 標準: {criteria.standardReplenishment}
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              下限: {criteria.minStock} | 基準: {criteria.targetStock} | 標準: {criteria.standardReplenishment}
-                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              data-testid={`button-edit-criteria-${criteria.id}`}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            data-testid={`button-edit-criteria-${criteria.id}`}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
                         </div>
+                      ))
+                    ) : (
+                      <div className="flex flex-col items-center py-8 text-muted-foreground" data-testid="empty-replenishment-criteria">
+                        <Settings className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                        <h4 className="font-medium mb-1">補充基準が設定されていません</h4>
+                        <p className="text-xs text-center">商品と場所の組み合わせで補充基準を設定してください</p>
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </CardContent>

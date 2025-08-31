@@ -237,7 +237,21 @@ export default function Sales() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground">販売可能な在庫がありません</p>
+                  <div className="flex flex-col items-center py-8 text-muted-foreground" data-testid="empty-sales-inventory">
+                    <ShoppingCart className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                    <h3 className="font-medium text-lg mb-2">販売可能な在庫がありません</h3>
+                    {searchSku ? (
+                      <div className="text-sm text-center space-y-1">
+                        <p>検索条件に一致する商品がありません</p>
+                        <p className="text-xs">別のSKUで検索してください</p>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-center space-y-1">
+                        <p>この店舗には現在販売可能な在庫がありません</p>
+                        <p className="text-xs">仕入れまたは出荷処理を行ってください</p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

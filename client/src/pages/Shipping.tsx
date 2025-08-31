@@ -231,7 +231,11 @@ export default function Shipping() {
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground text-center">アラートはありません</p>
+                <div className="flex flex-col items-center py-6 text-muted-foreground" data-testid="empty-low-stock-alerts">
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                  <h4 className="font-medium mb-1">アラートはありません</h4>
+                  <p className="text-xs text-center">すべての商品が適正在庫を維持しています</p>
+                </div>
               )}
             </div>
           </CardContent>
@@ -268,7 +272,11 @@ export default function Shipping() {
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground text-center">未処理の指示はありません</p>
+                <div className="flex flex-col items-center py-6 text-muted-foreground" data-testid="empty-pending-shipments">
+                  <Package className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                  <h4 className="font-medium mb-1">未処理の指示はありません</h4>
+                  <p className="text-xs text-center">新しい出荷指示が作成されると表示されます</p>
+                </div>
               )}
             </div>
           </CardContent>

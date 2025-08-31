@@ -302,34 +302,46 @@ export default function Warehouse() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {pendingShipments?.map((shipment) => (
-                    <tr 
-                      key={shipment.id} 
-                      className={`table-hover cursor-pointer ${selectedShipment?.id === shipment.id ? 'bg-blue-50' : ''}`}
-                      onClick={() => setSelectedShipment(shipment)}
-                      data-testid={`row-pending-shipment-${shipment.id}`}
-                    >
-                      <td className="px-4 py-3 text-sm">{shipment.toLocation.name}</td>
-                      <td className="px-4 py-3 text-sm font-medium">{shipment.product.sku}</td>
-                      <td className="px-4 py-3 text-sm">{shipment.quantity}</td>
-                      <td className="px-4 py-3 text-sm">
-                        {shipment.requestedDate ? format(new Date(shipment.requestedDate), 'M/d') : '未設定'}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedShipment(shipment);
-                          }}
-                          data-testid={`button-select-shipment-${shipment.id}`}
-                        >
-                          選択
-                        </Button>
+                  {pendingShipments && pendingShipments.length > 0 ? (
+                    pendingShipments.map((shipment) => (
+                      <tr 
+                        key={shipment.id} 
+                        className={`table-hover cursor-pointer ${selectedShipment?.id === shipment.id ? 'bg-blue-50' : ''}`}
+                        onClick={() => setSelectedShipment(shipment)}
+                        data-testid={`row-pending-shipment-${shipment.id}`}
+                      >
+                        <td className="px-4 py-3 text-sm">{shipment.toLocation.name}</td>
+                        <td className="px-4 py-3 text-sm font-medium">{shipment.product.sku}</td>
+                        <td className="px-4 py-3 text-sm">{shipment.quantity}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {shipment.requestedDate ? format(new Date(shipment.requestedDate), 'M/d') : '未設定'}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedShipment(shipment);
+                            }}
+                            data-testid={`button-select-shipment-${shipment.id}`}
+                          >
+                            選択
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground" data-testid="empty-pending-shipments-warehouse">
+                        <div className="flex flex-col items-center">
+                          <Truck className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                          <p>現在、未処理の出荷指示はありません</p>
+                          <p className="text-xs mt-1">新しい出荷指示が作成されると、ここに表示されます</p>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -393,7 +405,11 @@ export default function Warehouse() {
                   </div>
                 </div>
               ) : (
-                <p className="text-muted-foreground">上記の未処理出荷指示から1件を選択してください</p>
+                <div className="flex flex-col items-center py-8 text-muted-foreground" data-testid="empty-shipping-selection">
+                  <Package className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                  <h3 className="font-medium text-lg mb-2">出荷指示を選択してください</h3>
+                  <p className="text-sm">上記の表から出荷指示を選択すると、詳細が表示されます</p>
+                </div>
               )}
             </CardContent>
           </Card>

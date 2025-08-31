@@ -7,7 +7,7 @@ import { format } from "date-fns";
 
 export function HistorySidebar() {
   const { data: history, isLoading } = useQuery<HistoryEntry[]>({
-    queryKey: ["/api/history", "20"],
+    queryKey: ["/api/history?limit=20"],
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 

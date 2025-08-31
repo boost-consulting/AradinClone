@@ -279,6 +279,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Seed data (temporarily disabled)
+  app.post("/api/seed", async (req, res) => {
+    res.status(501).json({ message: "Seed data creation temporarily disabled" });
+  });
+
   // History
   app.get("/api/history", async (req, res) => {
     try {

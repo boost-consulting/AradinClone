@@ -481,6 +481,7 @@ export class DatabaseStorage implements IStorage {
       weekSales,
     };
   }
+
 }
 
 export const storage = new DatabaseStorage();
