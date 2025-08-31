@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 import { AlertTriangle, Plus, Calendar, Package } from "lucide-react";
 import { format } from "date-fns";
 
@@ -52,6 +53,7 @@ interface ShippingInstruction {
 export default function Shipping() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   const [selectedStore, setSelectedStore] = useState("1");
   const [shippingForm, setShippingForm] = useState({
@@ -147,7 +149,6 @@ export default function Shipping() {
         quantity: parseInt(shippingForm.quantity),
         requestedDate: shippingForm.requestedDate ? new Date(shippingForm.requestedDate).toISOString() : null,
         memo: shippingForm.memo,
-        createdBy: "store_user",
       });
     } catch (error) {
       console.error("Shipping creation error:", error);

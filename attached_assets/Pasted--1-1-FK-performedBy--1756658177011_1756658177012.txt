@@ -1,0 +1,86 @@
+以下に挙げるすべてを実行し、その成否を自身でテストしてください。 
+優先度1（ブロッカー解消：まず通す）
+1. 履歴のFK違反を確実に解消する
+* いまのフロントは performedBy を固定文字列で送っている（例：Warehouse は "warehouse_user"、Sales/Shipping/Returns は "store_user"）。
+* サーバDBの users.id に、これと同じIDを必ず用意する（warehouse_user と store_user）。ユーザー作成は 初期シードで投入。
+* 既存データで inventory_history.performed_by が未登録・不整合なら、一括で system に置換して復旧してよい。
+1. 初期シードを“有効化”してデータを投入
+* ルート：server/routes.ts の /api/seed は現在 501 で無効。最小構成のサンプルデータを投入できるよう有効化。
+* 投入内容（軽量・現実感あり）：
+    * ユーザー：warehouse_user（role=warehouse）、store_user（role=store）。
+    * 場所：倉庫（棚A/B/C）＋ 店舗1〜6。
+    * 商品：12型 × 色2 × サイズ3 = 72SKU。
+    * 在庫残高：倉庫はSKUごと合計20点（A10/B6/C4：主に「通常」）。店舗は0〜5点（主に「通常」、少量「不良」）。
+    * 補充基準：店舗=下限2/基準5/標準補充量5、倉庫=下限5/基準15/標準補充量20。
+    * 出荷指示：店舗1に3件、店舗2に2件（status=pending）。
+    * 履歴：受入→棚入れ2、販売3、顧客返品1、店舗→倉庫返品送付1、返品受入＋検品1、在庫確保1。
+* シードは起動時一度だけ、または管理向けボタンで明示的に実行できれば十分。
+1. ダッシュボードの遷移クリックを実稼働に
+* client/src/pages/Dashboard.tsx はカードに onClick が付いている。クリックが効かない場合は、上位ラッパの pointer-events やオーバーレイが干渉していないかを確認し、カード全体にクリック領域があることを担保する。
+* 下部「クイックアクション」も同様に遷移先バインドの確認。
+
+優先度2（数字が動く最小運用：画面↔DBの連動）
+1. ダッシュボード数値と一覧を DB 集計に接続
+* /api/dashboard/metrics・/api/dashboard/inventory-summary・/api/dashboard/low-stock は server/storage.ts で実装済み。シード投入後に0以外が出ること、30秒ごと自動再取得が効くことを確認。
+* 「未処理出荷指示テーブル」「少数アラート詳細」も 空時メッセージが出るよう現状の空表示を維持。
+1. 右サイド「直近の履歴」をページ文脈で切替
+* client/src/components/HistorySidebar.tsx は常に "/api/history?limit=20" を読むため、どの画面でも同じになる。
+* 方針A（手早い）：現在のURLパスを useLocation() で取得し、クエリパラメータに types= を付けて出し分け（例：入出庫=受入/棚入れ/在庫確保/出荷確定、販売=販売/顧客返品、出荷指示=作成/完了、返品=返品送付/返品受入/返品検品）。
+    * サーバの /api/history に types（カンマ区切り）での絞り込みを追加。
+* 方針B（最小）：queryKey に現在パスを混ぜて画面毎に再取得しつつ、当面は全履歴20件のままでも可。
+1. 在庫一覧の「明細」モーダルはデータ連動で動く
+* Inventory.tsx は /api/history?productId=&locationId= を読みに行く実装。シード後は履歴が表示される。空なら空文言のままでOK。
+
+優先度3（ワークフローの“通し”を完成）
+1. Warehouse：出荷処理を通す（FKも含め）
+* client/src/pages/Warehouse.tsx は confirmShipmentMutation で performedBy: "warehouse_user" を送信。
+* server/storage.ts の confirmShippingInstruction() は在庫移動と履歴追加を実施。
+* ユーザーシードがあればFKは解消。処理後は /api/shipping・/api/inventory・/api/history を invalidate しており、ダッシュボードにも反映される。
+1. Returns：数量の扱いを修正（現在は仕様不整合）
+* 現状、Returns.tsx の「店舗→倉庫返品送付」で 負の数量 を adjustInventory に渡している。
+* サーバの adjustInventorySchema は quantity を positive で定義、storage.adjustInventory() も **正の数量で「from を減算 → to を加算」**する前提。
+* 対応方針（簡単で安全）：
+    * adjustInventorySchema と storage.adjustInventory() を toState を任意にし、「減算のみ」をサポート（fromState あり・toState なしのときは減算だけ、履歴は toState を空にして記録）。
+    * これに合わせて Returns では、
+        1. 店舗側の減算：fromState="通常", toState=（未指定）, quantity=正の値
+        2. 倉庫側の受入：fromState=（未指定）, toState="検品中", quantity=正の値
+* この修正で「400（Zod）」や在庫の二重減算／加算崩れを防げる。
+1. Sales：販売登録の“空表示”とSKU選択の動線
+* SKUは左の在庫サマリからクリックでフォームに流し込む設計。いまは在庫が空なので選べない。
+* シード投入後に在庫が表示→SKUクリック→販売登録まで通ること。登録後は /api/inventory と /api/history を invalidate。
+1. Shipping：出荷指示の作成
+* 作成時 createdBy: "store_user" を送る。ユーザーシードが必須。
+* 少数アラート（自店舗のみ抽出）から SKU・推奨数量を自動入力して、保存→未処理リストに反映。
+
+優先度4（一貫性／UIの体験差分の解消）
+1. 通知バッジの中身を実装
+* Layout.tsx のベルアイコンは表示のみ。未処理出荷指示の件数をバッジに表示し、クリックでドロップダウンに未処理一覧→行クリックで Warehouse へ遷移。
+* 未件時は「未処理の出荷指示はありません」を表示。
+1. 店舗セレクタの一貫性
+* Header の店舗セレクタは固定値（store1 等）だが、各ページは id ベース。
+* **当面は各ページのセレクタを正とし、Header は“表示のみ”**でOK。将来は Context 化して統一。
+1. 用語の統一
+* UI 表示の種別名と inventory_history.operation_type を完全一致させる（例：「棚入れ」で統一）。色分けロジックも文字列に連動。
+
+優先度5（整合性ルールの徹底）
+1. 在庫更新は「一体更新＋履歴1行」の原則
+* 出荷確定：倉庫（通常 or 確保）−／店舗（通常）＋／指示=completed／履歴追記。
+* 受入→棚入れ：検品中＋ → 確定で 通常＋ or 不良＋。
+* 顧客返品：再販可→店舗・通常＋／不可→店舗・不良＋。
+* 店舗→倉庫返品送付：店舗・通常−（減算のみ） → 倉庫・検品中＋。
+* 在庫確保：倉庫・通常− → 確保＋。
+* すべて performedBy に実在ユーザーIDを入れる（シードIDと一致）。
+
+受け入れ確認（この順に触って検証）
+1. シード実行 → ダッシュボードに件数・一覧・サマリが出る。
+2. 出荷指示作成（Shipping）→ ダッシュボード・Warehouse に未処理が増える。
+3. Warehouseで出荷確定 → 倉庫↓・店舗↑・指示=完了・履歴追記。
+4. 販売登録（Sales）→ 店舗の通常↓・販売金額が履歴に出る。
+5. 顧客返品（Returns/再販可）→ 店舗の通常↑（不良選択なら店舗の不良↑）。
+6. 店舗→倉庫返品送付 → Warehouse の「返品受入・検品」に到着分が出て、検品確定で倉庫の通常 or 不良へ。
+7. 在庫一覧「明細」→ 対象SKU×場所の履歴がモーダル表示。
+
+補足（今回の実装に特有のポイント）
+* エラーの主因は users の未シードによる inventory_history.performed_by のFK違反。ユーザー投入が最優先。
+* Returns の「負の数量」送信は サーバ定義と矛盾（Zodで positive）。減算のみの仕様追加が必要。
+* 「直近の履歴がどこでも同じ」は Sidebar が固定キーで取得しているため。ページ文脈でキー/パラメータを変える。

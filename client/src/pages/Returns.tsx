@@ -9,11 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 import { RotateCcw, Package, Truck } from "lucide-react";
 
 export default function Returns() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   const [selectedStore, setSelectedStore] = useState("1");
   const [customerReturnForm, setCustomerReturnForm] = useState({
@@ -91,7 +93,7 @@ export default function Returns() {
         toState: targetState,
         quantity: parseInt(customerReturnForm.quantity),
         operationType: "顧客返品",
-        performedBy: "store_user",
+        performedBy: user?.id || "system",
         memo: `顧客返品 - ${customerReturnForm.condition}`,
       });
 
@@ -123,7 +125,7 @@ export default function Returns() {
         toState: "通常",
         quantity: -parseInt(warehouseReturnForm.quantity), // Negative for reduction
         operationType: "店舗返品送付",
-        performedBy: "store_user",
+        performedBy: user?.id || "system",
         memo: warehouseReturnForm.memo || "倉庫への返品送付",
       });
 
@@ -134,7 +136,7 @@ export default function Returns() {
         toState: "検品中",
         quantity: parseInt(warehouseReturnForm.quantity),
         operationType: "返品受入",
-        performedBy: "store_user",
+        performedBy: user?.id || "system",
         memo: `${currentStore.name}からの返品受入`,
       });
 

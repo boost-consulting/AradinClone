@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 import { Truck, Package, CheckCircle, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 
@@ -35,6 +36,7 @@ interface PendingShipment {
 export default function Warehouse() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   // Form states
   const [selectedShipment, setSelectedShipment] = useState<PendingShipment | null>(null);
@@ -130,7 +132,7 @@ export default function Warehouse() {
         toState: "確保",
         quantity: selectedShipment.quantity,
         operationType: "在庫確保",
-        performedBy: "warehouse_user",
+
         memo: `出荷指示#${selectedShipment.id}に対する在庫確保`,
       });
     } catch (error) {
@@ -143,7 +145,6 @@ export default function Warehouse() {
     
     await confirmShipmentMutation.mutateAsync({
       id: selectedShipment.id,
-      performedBy: "warehouse_user",
     });
   };
 
@@ -163,7 +164,7 @@ export default function Warehouse() {
         toState: "検品中",
         quantity: parseInt(receivingForm.quantity),
         operationType: "仕入受入",
-        performedBy: "warehouse_user",
+
         memo: `仕入先: ${receivingForm.supplier}`,
       });
 
@@ -203,7 +204,7 @@ export default function Warehouse() {
           toState: "通常",
           quantity: goodQty,
           operationType: "棚入れ",
-          performedBy: "warehouse_user",
+  
           memo: "良品として棚入れ",
         });
       }
@@ -217,7 +218,7 @@ export default function Warehouse() {
           toState: "不良",
           quantity: defectiveQty,
           operationType: "棚入れ",
-          performedBy: "warehouse_user",
+  
           memo: "不良品として分別",
         });
       }
@@ -255,7 +256,7 @@ export default function Warehouse() {
         toState: targetState,
         quantity: parseInt(returnsForm.quantity),
         operationType: "返品検品",
-        performedBy: "warehouse_user",
+
         memo: `返品検品結果: ${returnsForm.condition}`,
       });
 

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 import { Search, ShoppingCart, Percent, JapaneseYen } from "lucide-react";
 import { InventoryStatusBadge } from "@/components/InventoryStatusBadge";
 import { InventoryState } from "@/lib/types";
@@ -30,6 +31,7 @@ interface InventoryBalance {
 export default function Sales() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   const [selectedStore, setSelectedStore] = useState("1");
   const [searchSku, setSearchSku] = useState("");
@@ -130,7 +132,6 @@ export default function Sales() {
         saleAmount,
         discount: salesForm.discountAmount ? parseFloat(salesForm.discountAmount) : 
                  salesForm.discountPercent ? parseFloat(salesForm.discountPercent) : undefined,
-        performedBy: "store_user",
         memo: `店舗${currentStore.name}での販売`,
       });
     } catch (error) {

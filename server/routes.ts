@@ -1,11 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
 import { 
   insertProductSchema, insertLocationSchema, insertShippingInstructionSchema,
-  insertReplenishmentCriteriaSchema, insertInventoryHistorySchema, insertUserSchema 
+  insertReplenishmentCriteriaSchema, insertInventoryHistorySchema, insertUserSchema,
+  users, locations, products, inventoryBalances, replenishmentCriteria, 
+  shippingInstructions, inventoryHistory
 } from "@shared/schema";
 import { z } from "zod";
+import { sql, eq } from "drizzle-orm";
 
 // Extend Express Session interface
 declare module "express-session" {
@@ -181,9 +185,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create shipping instruction
-  app.post("/api/shipping", async (req, res) => {
+  app.post("/api/shipping", requireAuth, async (req, res) => {
     try {
-      const data = insertShippingInstructionSchema.parse(req.body);
+      const requestData = { ...req.body, createdBy: req.session.userId };
+      const data = insertShippingInstructionSchema.parse(requestData);
       const instruction = await storage.createShippingInstruction(data);
       
       // Create history entry
@@ -209,10 +214,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Confirm shipping instruction
-  app.post("/api/shipping/:id/confirm", async (req, res) => {
+  app.post("/api/shipping/:id/confirm", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { performedBy } = req.body;
+      const performedBy = req.session.userId!;
       
       await storage.confirmShippingInstruction(id, performedBy);
       res.json({ message: "Shipping instruction confirmed" });
@@ -242,10 +247,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Adjust inventory (for sales, returns, etc.)
-  app.post("/api/inventory/adjust", async (req, res) => {
+  app.post("/api/inventory/adjust", requireAuth, async (req, res) => {
     try {
       const data = adjustInventorySchema.parse(req.body);
-      const { performedBy = 'system' } = req.body;
+      const performedBy = req.session.userId!;
       
       await storage.adjustInventory(
         data.productId,
@@ -270,10 +275,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Sales
-  app.post("/api/sales", async (req, res) => {
+  app.post("/api/sales", requireAuth, async (req, res) => {
     try {
       const data = saleSchema.parse(req.body);
-      const { performedBy = 'system' } = req.body;
+      const performedBy = req.session.userId!;
       
       await storage.adjustInventory(
         data.productId,
@@ -390,9 +395,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Seed data (temporarily disabled)
+  // Seed data
   app.post("/api/seed", async (req, res) => {
-    res.status(501).json({ message: "Seed data creation temporarily disabled" });
+    try {
+      // Get existing warehouse and store users
+      const warehouseUser = await db.select().from(users).where(eq(users.role, 'warehouse')).limit(1);
+      const storeUser = await db.select().from(users).where(eq(users.role, 'store')).limit(1);
+      
+      if (warehouseUser.length === 0 || storeUser.length === 0) {
+        return res.status(400).json({ message: "Required warehouse and store users not found. Please ensure users are created first." });
+      }
+
+      const warehouseUserId = warehouseUser[0].id;
+      const storeUserId = storeUser[0].id;
+
+      // Create locations (warehouse shelves + stores)
+      await db.insert(locations).values([
+        { name: '倉庫 棚A', type: 'warehouse', displayOrder: 1 },
+        { name: '倉庫 棚B', type: 'warehouse', displayOrder: 2 },
+        { name: '倉庫 棚C', type: 'warehouse', displayOrder: 3 },
+        { name: '店舗1', type: 'store', displayOrder: 4 },
+        { name: '店舗2', type: 'store', displayOrder: 5 },
+        { name: '店舗3', type: 'store', displayOrder: 6 },
+        { name: '店舗4', type: 'store', displayOrder: 7 },
+        { name: '店舗5', type: 'store', displayOrder: 8 },
+        { name: '店舗6', type: 'store', displayOrder: 9 },
+      ]).onConflictDoNothing();
+
+      // Create products (12 models × 2 colors × 3 sizes = 72 SKUs)
+      const productData: any[] = [];
+      const models = [
+        'Tシャツ01', 'Tシャツ02', 'シャツ01', 'シャツ02', 'パンツ01', 'パンツ02',
+        'ジーンズ01', 'ジーンズ02', 'ジャケット01', 'ジャケット02', 'セーター01', 'セーター02'
+      ];
+      const colors = ['BK', 'WH']; // Black, White
+      const sizes = ['S', 'M', 'L'];
+      const prices = [2980, 3980, 4980, 5980, 6980, 7980, 8980, 9980, 12980, 14980, 16980, 18980];
+
+      models.forEach((model, modelIndex) => {
+        colors.forEach(color => {
+          sizes.forEach(size => {
+            const sku = `${model.replace(/[^A-Z0-9]/g, '')}${modelIndex + 1 < 10 ? '0' + (modelIndex + 1) : modelIndex + 1}-${color}-${size}`;
+            productData.push({
+              sku,
+              modelName: model,
+              color: color === 'BK' ? 'ブラック' : 'ホワイト',
+              size,
+              category: model.includes('Tシャツ') || model.includes('シャツ') ? 'トップス' : 'ボトムス',
+              retailPrice: prices[modelIndex].toString(),
+              costPrice: (prices[modelIndex] * 0.6).toString(),
+            });
+          });
+        });
+      });
+
+      await db.insert(products).values(productData.slice(0, 30)).onConflictDoNothing(); // Insert first 30 products
+
+      // Get created product and location IDs
+      const createdProducts = await db.select().from(products).limit(30);
+      const createdLocations = await db.select().from(locations);
+
+      // Create inventory balances (warehouse: 20 per SKU, stores: 0-5 per SKU)
+      const inventoryData: any[] = [];
+      createdProducts.forEach(product => {
+        // Warehouse shelves (A=10, B=6, C=4)
+        inventoryData.push(
+          { productId: product.id, locationId: 1, state: '通常', quantity: 10 }, // 棚A
+          { productId: product.id, locationId: 2, state: '通常', quantity: 6 },  // 棚B
+          { productId: product.id, locationId: 3, state: '通常', quantity: 4 },  // 棚C
+        );
+        
+        // Stores (random 0-5 quantity, mostly normal with some defective)
+        for (let storeIndex = 4; storeIndex <= 9; storeIndex++) {
+          const quantity = Math.floor(Math.random() * 6); // 0-5
+          if (quantity > 0) {
+            const isDefective = Math.random() < 0.1; // 10% chance of defective
+            inventoryData.push({
+              productId: product.id,
+              locationId: storeIndex,
+              state: isDefective ? '不良' : '通常',
+              quantity
+            });
+          }
+        }
+      });
+
+      await db.insert(inventoryBalances).values(inventoryData).onConflictDoNothing();
+
+      // Create replenishment criteria
+      const replenishmentData: any[] = [];
+      createdProducts.forEach(product => {
+        // Store criteria: min=2, base=5, target=5
+        for (let storeIndex = 4; storeIndex <= 9; storeIndex++) {
+          replenishmentData.push({
+            productId: product.id,
+            locationId: storeIndex,
+            minStock: 2,
+            baseStock: 5,
+            targetStock: 5,
+          });
+        }
+        // Warehouse criteria: min=5, base=15, target=20
+        for (let warehouseIndex = 1; warehouseIndex <= 3; warehouseIndex++) {
+          replenishmentData.push({
+            productId: product.id,
+            locationId: warehouseIndex,
+            minStock: 5,
+            baseStock: 15,
+            targetStock: 20,
+          });
+        }
+      });
+
+      await db.insert(replenishmentCriteria).values(replenishmentData).onConflictDoNothing();
+
+      // Create shipping instructions using actual user IDs
+      const shippingData = [
+        { productId: createdProducts[0].id, fromLocationId: 1, toLocationId: 4, quantity: 3, status: 'pending', createdBy: storeUserId },
+        { productId: createdProducts[1].id, fromLocationId: 2, toLocationId: 4, quantity: 2, status: 'pending', createdBy: storeUserId },
+        { productId: createdProducts[2].id, fromLocationId: 1, toLocationId: 5, quantity: 4, status: 'pending', createdBy: storeUserId },
+        { productId: createdProducts[3].id, fromLocationId: 3, toLocationId: 5, quantity: 1, status: 'pending', createdBy: storeUserId },
+        { productId: createdProducts[4].id, fromLocationId: 2, toLocationId: 6, quantity: 2, status: 'pending', createdBy: storeUserId },
+      ];
+
+      await db.insert(shippingInstructions).values(shippingData).onConflictDoNothing();
+
+      // Create history entries using actual user IDs
+      const historyData = [
+        { operationType: '仕入受入', productId: createdProducts[0].id, locationId: 1, quantity: 5, performedBy: warehouseUserId },
+        { operationType: '棚入れ', productId: createdProducts[0].id, fromLocationId: 1, toLocationId: 1, quantity: 5, state: '通常', performedBy: warehouseUserId },
+        { operationType: '棚入れ', productId: createdProducts[1].id, fromLocationId: 2, toLocationId: 2, quantity: 3, state: '通常', performedBy: warehouseUserId },
+        { operationType: '販売', productId: createdProducts[2].id, locationId: 4, quantity: 1, amount: 2980, performedBy: storeUserId },
+        { operationType: '販売', productId: createdProducts[3].id, locationId: 5, quantity: 2, amount: 5960, performedBy: storeUserId },
+        { operationType: '販売', productId: createdProducts[4].id, locationId: 6, quantity: 1, amount: 4980, performedBy: storeUserId },
+        { operationType: '顧客返品', productId: createdProducts[2].id, locationId: 4, quantity: 1, performedBy: storeUserId },
+        { operationType: '在庫確保', productId: createdProducts[5].id, fromLocationId: 1, toLocationId: 1, quantity: 2, state: '確保', performedBy: warehouseUserId },
+      ];
+
+      await db.insert(inventoryHistory).values(historyData).onConflictDoNothing();
+
+      res.json({ message: "Sample data seeded successfully" });
+    } catch (error) {
+      console.error("Seed error:", error);
+      res.status(500).json({ message: "Failed to seed data", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
   });
 
   // History
