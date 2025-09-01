@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
+import { seedDatabase, resetAndReseed } from "./seed";
 import { 
   insertProductSchema, insertLocationSchema, insertShippingInstructionSchema,
   insertReplenishmentCriteriaSchema, insertInventoryHistorySchema, insertUserSchema,
@@ -42,7 +43,7 @@ function requireRole(...roles: string[]) {
 const saleSchema = z.object({
   productId: z.number(),
   locationId: z.number(),
-  quantity: z.number().positive(),
+  quantity: z.number().positive().int(),
   saleAmount: z.number().positive(),
   discount: z.number().optional(),
   memo: z.string().optional(),
@@ -52,9 +53,20 @@ const adjustInventorySchema = z.object({
   productId: z.number(),
   locationId: z.number(),
   fromState: z.enum(['通常', '確保', '検品中', '不良']).optional(),
-  toState: z.enum(['通常', '確保', '検品中', '不良']),
-  quantity: z.number().positive(),
+  toState: z.enum(['通常', '確保', '検品中', '不良']).optional(), // Now optional for reduction-only operations
+  quantity: z.number().positive().int(), // Always positive integers only
   operationType: z.enum(['販売', '顧客返品', '出荷指示作成', '在庫確保', '出荷確定', '仕入受入', '棚入れ', '店舗返品送付', '返品受入', '返品検品']),
+  memo: z.string().optional(),
+  saleAmount: z.number().optional(),
+});
+
+// New dedicated schema for reduction-only operations (sales, returns)
+const reductionOnlySchema = z.object({
+  productId: z.number(),
+  locationId: z.number(),
+  fromState: z.enum(['通常', '確保', '検品中', '不良']),
+  quantity: z.number().positive().int(), // Always positive for reduction amount
+  operationType: z.enum(['販売', '店舗返品送付']),
   memo: z.string().optional(),
   saleAmount: z.number().optional(),
 });
@@ -102,7 +114,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.get("/api/auth/me", (req, res) => {
+  app.get("/api/auth/me", async (req, res) => {
+    // Auto-login for demo purposes
+    if (!req.session.userId) {
+      try {
+        // Default to store_user for demo
+        const user = await storage.getUserByUsername("store_user");
+        if (user) {
+          req.session.userId = user.id;
+          req.session.role = user.role;
+          req.session.storeId = user.storeId || undefined;
+        }
+      } catch (error) {
+        // Ignore auto-login errors
+      }
+    }
+    
     if (!req.session.userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
@@ -302,6 +329,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Store return shipment (reduction-only operation)
+  app.post("/api/returns/ship", requireAuth, async (req, res) => {
+    try {
+      const data = reductionOnlySchema.parse(req.body);
+      const performedBy = req.session.userId!;
+      
+      if (data.operationType !== '店舗返品送付') {
+        return res.status(400).json({ message: "Invalid operation type for return shipment" });
+      }
+      
+      await storage.adjustInventory(
+        data.productId,
+        data.locationId,
+        data.fromState, // fromState is required for returns
+        null, // No toState for return shipments - only reduce from store
+        data.quantity, // Positive quantity for reduction amount
+        '店舗返品送付',
+        performedBy,
+        data.memo
+      );
+      
+      res.json({ message: "Return shipment processed successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+      } else {
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to process return shipment" });
+      }
+    }
+  });
+
+  // Customer returns (increases inventory)
+  app.post("/api/returns/customer", requireAuth, async (req, res) => {
+    try {
+      const data = adjustInventorySchema.parse(req.body);
+      const performedBy = req.session.userId!;
+      
+      if (data.operationType !== '顧客返品') {
+        return res.status(400).json({ message: "Invalid operation type for customer return" });
+      }
+      
+      if (!data.toState) {
+        return res.status(400).json({ message: "toState is required for customer returns" });
+      }
+      
+      await storage.adjustInventory(
+        data.productId,
+        data.locationId,
+        null, // No fromState for customer returns
+        data.toState, // Add to normal or defective inventory
+        data.quantity,
+        '顧客返品',
+        performedBy,
+        data.memo
+      );
+      
+      res.json({ message: "Customer return processed successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+      } else {
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to process customer return" });
+      }
+    }
+  });
+
   // Products
   app.get("/api/products", async (req, res) => {
     try {
@@ -429,15 +522,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create locations (warehouse shelves + stores)
       await db.insert(locations).values([
-        { name: '倉庫 棚A', type: 'warehouse', displayOrder: 1 },
-        { name: '倉庫 棚B', type: 'warehouse', displayOrder: 2 },
-        { name: '倉庫 棚C', type: 'warehouse', displayOrder: 3 },
-        { name: '店舗1', type: 'store', displayOrder: 4 },
-        { name: '店舗2', type: 'store', displayOrder: 5 },
-        { name: '店舗3', type: 'store', displayOrder: 6 },
-        { name: '店舗4', type: 'store', displayOrder: 7 },
-        { name: '店舗5', type: 'store', displayOrder: 8 },
-        { name: '店舗6', type: 'store', displayOrder: 9 },
+        { name: '倉庫 棚A', type: 'warehouse', code: 'SHELF_A', displayOrder: 1 },
+        { name: '倉庫 棚B', type: 'warehouse', code: 'SHELF_B', displayOrder: 2 },
+        { name: '倉庫 棚C', type: 'warehouse', code: 'SHELF_C', displayOrder: 3 },
+        { name: '店舗1', type: 'store', code: 'STORE_1', displayOrder: 4 },
+        { name: '店舗2', type: 'store', code: 'STORE_2', displayOrder: 5 },
+        { name: '店舗3', type: 'store', code: 'STORE_3', displayOrder: 6 },
+        { name: '店舗4', type: 'store', code: 'STORE_4', displayOrder: 7 },
+        { name: '店舗5', type: 'store', code: 'STORE_5', displayOrder: 8 },
+        { name: '店舗6', type: 'store', code: 'STORE_6', displayOrder: 9 },
       ]).onConflictDoNothing();
 
       // Create products (12 models × 2 colors × 3 sizes = 72 SKUs)
@@ -556,6 +649,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Seed error:", error);
       res.status(500).json({ message: "Failed to seed data", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Admin routes - Database management
+  app.post("/api/admin/seed", requireAuth, requireRole('admin', 'warehouse'), async (req, res) => {
+    try {
+      await seedDatabase();
+      res.json({ message: "Database seeded successfully with fresh demo data" });
+    } catch (error) {
+      console.error("Seed error:", error);
+      res.status(500).json({ 
+        message: "Failed to seed database", 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.post("/api/admin/reset", requireAuth, requireRole('admin', 'warehouse'), async (req, res) => {
+    try {
+      await resetAndReseed();
+      res.json({ message: "Database reset and reseeded successfully" });
+    } catch (error) {
+      console.error("Reset error:", error);
+      res.status(500).json({ 
+        message: "Failed to reset database", 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   });
 

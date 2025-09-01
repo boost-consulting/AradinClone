@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, pgEnum, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, pgEnum, serial, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -34,6 +34,7 @@ export const locations = pgTable("locations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   type: locationTypeEnum("type").notNull(),
+  code: text("code").notNull().unique(), // Location code for uniqueness
   displayOrder: integer("display_order").default(0),
   isActive: integer("is_active").default(1).notNull(),
 });
@@ -60,7 +61,9 @@ export const inventoryBalances = pgTable("inventory_balances", {
   state: inventoryStateEnum("state").notNull(),
   quantity: integer("quantity").default(0).notNull(),
   lastUpdated: timestamp("last_updated").defaultNow().notNull(),
-});
+}, (table) => ({
+  productLocationStateUnique: unique().on(table.productId, table.locationId, table.state),
+}));
 
 // Replenishment criteria (SKU × Location)
 export const replenishmentCriteria = pgTable("replenishment_criteria", {
@@ -70,7 +73,9 @@ export const replenishmentCriteria = pgTable("replenishment_criteria", {
   minStock: integer("min_stock").default(0).notNull(),
   targetStock: integer("target_stock").default(0).notNull(),
   standardReplenishment: integer("standard_replenishment").default(0).notNull(),
-});
+}, (table) => ({
+  productLocationUnique: unique().on(table.productId, table.locationId),
+}));
 
 // Shipping instructions
 export const shippingInstructions = pgTable("shipping_instructions", {

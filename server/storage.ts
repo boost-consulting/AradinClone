@@ -221,35 +221,74 @@ export class DatabaseStorage implements IStorage {
     memo?: string, 
     saleAmount?: number
   ): Promise<void> {
-    // Reduce from state if specified
-    if (fromState) {
-      const fromBalance = await this.getInventoryBalance(productId, locationId, fromState);
-      if (fromBalance && fromBalance.quantity >= quantity) {
-        await this.updateInventoryBalance(productId, locationId, fromState, fromBalance.quantity - quantity);
-      } else {
-        throw new Error(`Insufficient inventory in ${fromState} state`);
+    // Execute all inventory changes and history logging in a single transaction
+    await db.transaction(async (tx) => {
+      // Reduce from state if specified
+      if (fromState) {
+        // Get current balance within transaction for consistency
+        const [fromBalance] = await tx
+          .select()
+          .from(inventoryBalances)
+          .where(
+            and(
+              eq(inventoryBalances.productId, productId),
+              eq(inventoryBalances.locationId, locationId),
+              eq(inventoryBalances.state, fromState)
+            )
+          );
+
+        if (fromBalance && fromBalance.quantity >= quantity) {
+          await tx
+            .update(inventoryBalances)
+            .set({ quantity: fromBalance.quantity - quantity, lastUpdated: new Date() })
+            .where(eq(inventoryBalances.id, fromBalance.id));
+        } else {
+          throw new Error(`Insufficient inventory in ${fromState} state`);
+        }
       }
-    }
 
-    // Add to target state (only if toState is specified)
-    if (toState) {
-      const toBalance = await this.getInventoryBalance(productId, locationId, toState);
-      const newQuantity = (toBalance?.quantity || 0) + quantity;
-      await this.updateInventoryBalance(productId, locationId, toState, newQuantity);
-    }
+      // Add to target state (only if toState is specified)
+      if (toState) {
+        // Get current balance within transaction for consistency
+        const [toBalance] = await tx
+          .select()
+          .from(inventoryBalances)
+          .where(
+            and(
+              eq(inventoryBalances.productId, productId),
+              eq(inventoryBalances.locationId, locationId),
+              eq(inventoryBalances.state, toState)
+            )
+          );
 
-    // Create history entry
-    await this.createHistoryEntry({
-      operationType,
-      productId,
-      quantity,
-      fromLocationId: locationId,
-      toLocationId: locationId,
-      fromState,
-      toState,
-      saleAmount: saleAmount?.toString(),
-      memo,
-      performedBy,
+        const newQuantity = (toBalance?.quantity || 0) + quantity;
+
+        if (toBalance) {
+          await tx
+            .update(inventoryBalances)
+            .set({ quantity: newQuantity, lastUpdated: new Date() })
+            .where(eq(inventoryBalances.id, toBalance.id));
+        } else {
+          await tx
+            .insert(inventoryBalances)
+            .values({ productId, locationId, state: toState, quantity: newQuantity });
+        }
+      }
+
+      // Create history entry within the same transaction
+      await tx.insert(inventoryHistory).values({
+        operationType,
+        productId,
+        quantity,
+        fromLocationId: locationId,
+        toLocationId: locationId,
+        fromState,
+        toState,
+        saleAmount: saleAmount?.toString(),
+        memo,
+        performedBy,
+        timestamp: new Date(),
+      });
     });
   }
 
@@ -399,22 +438,27 @@ export class DatabaseStorage implements IStorage {
       .from(inventoryHistory)
       .leftJoin(products, eq(inventoryHistory.productId, products.id))
       .leftJoin(locations, eq(inventoryHistory.fromLocationId, locations.id))
-      .leftJoin(users, eq(inventoryHistory.performedBy, users.id));
+      .leftJoin(users, eq(inventoryHistory.performedBy, users.id))
+      .orderBy(desc(inventoryHistory.performedAt))
+      .limit(limit);
 
     if (operationTypes && operationTypes.length > 0) {
-      query = query.where(inArray(inventoryHistory.operationType, operationTypes));
+      const validOperationTypes = operationTypes.filter(type => 
+        ['販売', '顧客返品', '出荷指示作成', '在庫確保', '出荷確定', '仕入受入', '棚入れ', '店舗返品送付', '返品受入', '返品検品'].includes(type)
+      ) as OperationType[];
+      
+      if (validOperationTypes.length > 0) {
+        query = query.where(inArray(inventoryHistory.operationType, validOperationTypes));
+      }
     }
 
-    return await query
-      .orderBy(desc(inventoryHistory.performedAt))
-      .limit(limit)
-      .then(rows => rows.map(row => ({ 
-        ...row.inventory_history, 
-        product: row.products!,
-        fromLocation: row.locations || undefined,
-        toLocation: row.locations || undefined,
-        performer: row.users!
-      })));
+    return await query.then(rows => rows.map(row => ({ 
+      ...row.inventory_history, 
+      product: row.products!,
+      fromLocation: row.locations || undefined,
+      toLocation: row.locations || undefined,
+      performer: row.users!
+    })));
   }
 
   async getInventoryHistoryByProduct(productId: number, locationId?: number): Promise<(InventoryHistory & { fromLocation?: Location; toLocation?: Location; performer: User })[]> {
@@ -422,7 +466,8 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(inventoryHistory)
       .leftJoin(locations, eq(inventoryHistory.fromLocationId, locations.id))
-      .leftJoin(users, eq(inventoryHistory.performedBy, users.id));
+      .leftJoin(users, eq(inventoryHistory.performedBy, users.id))
+      .orderBy(desc(inventoryHistory.performedAt));
 
     if (locationId) {
       query = query.where(
@@ -435,13 +480,11 @@ export class DatabaseStorage implements IStorage {
       query = query.where(eq(inventoryHistory.productId, productId));
     }
 
-    return await query
-      .orderBy(desc(inventoryHistory.performedAt))
-      .then(rows => rows.map(row => ({ 
-        ...row.inventory_history,
-        fromLocation: row.locations || undefined,
-        toLocation: row.locations || undefined,
-        performer: row.users!
+    return await query.then(rows => rows.map(row => ({ 
+      ...row.inventory_history,
+      fromLocation: row.locations || undefined,
+      toLocation: row.locations || undefined,
+      performer: row.users!
       })));
   }
 

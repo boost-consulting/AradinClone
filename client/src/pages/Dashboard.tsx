@@ -130,8 +130,8 @@ export default function Dashboard() {
             </div>
             <div className="text-xs text-muted-foreground">下限割れSKU</div>
             <div className="space-y-1">
-              {lowStockAlerts?.slice(0, 3).map((alert) => (
-                <div key={`${alert.product.id}-${alert.location.id}`} className="text-xs text-destructive hover:underline cursor-pointer" data-testid={`link-alert-${alert.product.sku}`}>
+              {lowStockAlerts?.slice(0, 3).map((alert, index) => (
+                <div key={`alert-card-${alert.product.id}-${alert.location.id}-${index}`} className="text-xs text-destructive hover:underline cursor-pointer" data-testid={`link-alert-${alert.product.sku}-${index}`}>
                   {alert.product.sku} (在庫: {alert.currentStock})
                 </div>
               ))}
@@ -235,8 +235,8 @@ export default function Dashboard() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {lowStockAlerts && lowStockAlerts.length > 0 ? (
-                    lowStockAlerts.map((alert) => (
-                      <tr key={`${alert.product.id}-${alert.location.id}`} className="table-hover cursor-pointer bg-red-50" data-testid={`row-alert-${alert.product.sku}-${alert.location.id}`}>
+                    lowStockAlerts.map((alert, index) => (
+                      <tr key={`alert-table-${alert.product.id}-${alert.location.id}-${index}`} className="table-hover cursor-pointer bg-red-50" data-testid={`row-alert-${alert.product.sku}-${alert.location.id}-${index}`}>
                         <td className="px-4 py-3 text-sm font-medium">{alert.product.sku}</td>
                         <td className="px-4 py-3 text-sm">{alert.location.name}</td>
                         <td className="px-4 py-3 text-sm text-destructive font-bold">{alert.currentStock}</td>
