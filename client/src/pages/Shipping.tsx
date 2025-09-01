@@ -200,7 +200,7 @@ export default function Shipping() {
         status: "pending",
         requestedDate: formattedRequestedDate,
         memo: shippingForm.memo,
-        createdBy: user?.username,
+        createdBy: user?.id,
       });
     } catch (error) {
       console.error("Shipping creation error:", error);
