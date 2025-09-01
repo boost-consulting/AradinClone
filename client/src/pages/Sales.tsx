@@ -33,7 +33,7 @@ export default function Sales() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
-  const [selectedStore, setSelectedStore] = useState("all");
+  const [selectedStore, setSelectedStore] = useState("店舗1");
   const [searchSku, setSearchSku] = useState("");
   const [salesForm, setSalesForm] = useState({
     sku: "",
@@ -170,21 +170,56 @@ export default function Sales() {
           <CardTitle>店舗選択</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center space-x-4">
-            <Label htmlFor="store-select">対象店舗:</Label>
-            <Select value={selectedStore} onValueChange={setSelectedStore}>
-              <SelectTrigger className="w-48" data-testid="select-target-store">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべての店舗</SelectItem>
-                {stores.map((store: any) => (
-                  <SelectItem key={store.id} value={store.id.toString()}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center space-x-4">
+              <Label htmlFor="store-select">対象店舗:</Label>
+              <Select value={selectedStore} onValueChange={setSelectedStore}>
+                <SelectTrigger className="w-48" data-testid="select-target-store">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">すべての店舗</SelectItem>
+                  {stores.map((store: any) => (
+                    <SelectItem key={store.id} value={store.id.toString()}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Store Inventory Summary */}
+            {selectedStore !== "all" && currentStore && (
+              <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                <h4 className="font-medium text-sm mb-2">{currentStore.name} 在庫サマリ</h4>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {storeNormalInventory.reduce((sum, item) => sum + item.quantity, 0)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">通常在庫</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {storeNormalInventory.length}
+                    </div>
+                    <div className="text-xs text-muted-foreground">商品種類</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {storeNormalInventory.filter(item => item.quantity <= 10).length}
+                    </div>
+                    <div className="text-xs text-muted-foreground">低在庫商品</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">
+                      {storeNormalInventory.filter(item => item.quantity === 0).length}
+                    </div>
+                    <div className="text-xs text-muted-foreground">品切れ商品</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

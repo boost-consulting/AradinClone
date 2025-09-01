@@ -55,7 +55,7 @@ export default function Shipping() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
-  const [selectedStore, setSelectedStore] = useState("all");
+  const [selectedStore, setSelectedStore] = useState("店舗1");
   const [shippingForm, setShippingForm] = useState({
     sku: "",
     quantity: "",

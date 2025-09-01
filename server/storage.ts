@@ -493,14 +493,15 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getLowStockAlerts(): Promise<{ product: Product; location: Location; currentStock: number; minStock: number; targetStock: number }[]> {
+  async getLowStockAlerts(): Promise<{ product: Product; location: Location; currentStock: number; minStock: number; targetStock: number; shortageAmount: number }[]> {
     const result = await db
       .select({
         product: products,
         location: locations,
-        currentStock: inventoryBalances.quantity,
+        currentStock: sql<number>`COALESCE(${inventoryBalances.quantity}, 0)`.as('currentStock'),
         minStock: replenishmentCriteria.minStock,
         targetStock: replenishmentCriteria.targetStock,
+        shortageAmount: sql<number>`${replenishmentCriteria.minStock} - COALESCE(${inventoryBalances.quantity}, 0)`.as('shortageAmount'),
       })
       .from(replenishmentCriteria)
       .leftJoin(products, eq(replenishmentCriteria.productId, products.id))
@@ -519,7 +520,9 @@ export class DatabaseStorage implements IStorage {
           eq(locations.isActive, 1),
           lt(sql`COALESCE(${inventoryBalances.quantity}, 0)`, replenishmentCriteria.minStock)
         )
-      );
+      )
+      .orderBy(desc(sql`${replenishmentCriteria.minStock} - COALESCE(${inventoryBalances.quantity}, 0)`))
+      .limit(50); // Limit to top 50 alerts to prevent UI overload
 
     return result.map(row => ({
       product: row.product!,

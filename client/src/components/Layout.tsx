@@ -21,12 +21,20 @@ export function Layout({ children }: LayoutProps) {
     refetchInterval: 30000,
   });
 
+  // Fetch low stock alerts for notification badge
+  const { data: lowStockAlerts } = useQuery<any[]>({
+    queryKey: ["/api/dashboard/low-stock"],
+    refetchInterval: 30000,
+  });
+
   // Fetch stores for dynamic dropdown
   const { data: stores } = useQuery<any[]>({
     queryKey: ["/api/locations"],
   });
 
   const pendingShipmentsCount = pendingShipments?.length || 0;
+  const lowStockAlertsCount = lowStockAlerts?.length || 0;
+  const totalNotifications = pendingShipmentsCount + lowStockAlertsCount;
   const storeOptions = stores?.filter(store => store.type === 'store') || [];
 
   const navigationTabs = [
@@ -87,52 +95,105 @@ export function Layout({ children }: LayoutProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" data-testid="button-notifications" className="relative">
                   <Bell className="h-4 w-4" />
-                  {pendingShipmentsCount > 0 && (
+                  {totalNotifications > 0 && (
                     <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                      {pendingShipmentsCount}
+                      {totalNotifications}
                     </Badge>
                   )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-80">
                 <div className="p-3 border-b border-border">
-                  <h4 className="font-semibold text-sm">未処理出荷指示 ({pendingShipmentsCount}件)</h4>
+                  <h4 className="font-semibold text-sm">通知 ({totalNotifications}件)</h4>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    出荷指示: {pendingShipmentsCount}件 | 在庫少数: {lowStockAlertsCount}件
+                  </div>
                 </div>
                 <div className="max-h-64 overflow-y-auto">
-                  {pendingShipments && pendingShipments.length > 0 ? (
-                    pendingShipments.slice(0, 5).map((shipment: any) => (
-                      <DropdownMenuItem key={shipment.id} asChild>
-                        <Link href="/warehouse" className="flex items-start space-x-3 p-3 cursor-pointer">
-                          <Package className="h-4 w-4 mt-0.5 text-accent" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">
-                              {shipment.product?.sku || 'SKU未設定'}
+                  {/* Pending Shipments */}
+                  {pendingShipments && pendingShipments.length > 0 && (
+                    <>
+                      <div className="p-2 bg-muted/50">
+                        <h5 className="text-xs font-medium text-muted-foreground">未処理出荷指示</h5>
+                      </div>
+                      {pendingShipments.slice(0, 3).map((shipment: any) => (
+                        <DropdownMenuItem key={`shipment-${shipment.id}`} asChild>
+                          <Link href="/warehouse" className="flex items-start space-x-3 p-3 cursor-pointer">
+                            <Package className="h-4 w-4 mt-0.5 text-blue-600" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">
+                                {shipment.product?.sku || 'SKU未設定'}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {shipment.fromLocation?.name} → {shipment.toLocation?.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                数量: {shipment.quantity}点
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {shipment.fromLocation?.name} → {shipment.toLocation?.name}
+                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                  
+                  {/* Low Stock Alerts */}
+                  {lowStockAlerts && lowStockAlerts.length > 0 && (
+                    <>
+                      <div className="p-2 bg-muted/50">
+                        <h5 className="text-xs font-medium text-muted-foreground">在庫少数アラート</h5>
+                      </div>
+                      {lowStockAlerts.slice(0, 3).map((alert: any, index: number) => (
+                        <DropdownMenuItem key={`alert-${alert.product?.id}-${alert.location?.id}-${index}`} asChild>
+                          <Link href="/" className="flex items-start space-x-3 p-3 cursor-pointer">
+                            <div className="h-4 w-4 mt-0.5 bg-orange-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">!</span>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              数量: {shipment.quantity}点
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">
+                                {alert.product?.sku || 'SKU未設定'}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {alert.location?.name}
+                              </div>
+                              <div className="text-xs text-orange-600">
+                                在庫: {alert.currentStock}点 (最小: {alert.minStock}点)
+                              </div>
                             </div>
-                          </div>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                        </Link>
-                      </DropdownMenuItem>
-                    ))
-                  ) : (
+                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                  
+                  {/* No notifications */}
+                  {(!pendingShipments || pendingShipments.length === 0) && (!lowStockAlerts || lowStockAlerts.length === 0) && (
                     <div className="p-6 text-center text-muted-foreground">
-                      <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                      <p className="text-sm">未処理の出荷指示はありません</p>
+                      <Bell className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                      <p className="text-sm">通知はありません</p>
                     </div>
                   )}
                 </div>
-                {pendingShipmentsCount > 5 && (
+                {totalNotifications > 6 && (
                   <div className="p-3 border-t border-border">
-                    <Link href="/warehouse">
-                      <Button variant="outline" size="sm" className="w-full">
-                        すべて表示 ({pendingShipmentsCount}件)
-                      </Button>
-                    </Link>
+                    <div className="grid grid-cols-2 gap-2">
+                      {pendingShipmentsCount > 3 && (
+                        <Link href="/warehouse">
+                          <Button variant="outline" size="sm" className="w-full text-xs">
+                            すべての出荷指示
+                          </Button>
+                        </Link>
+                      )}
+                      {lowStockAlertsCount > 3 && (
+                        <Link href="/">
+                          <Button variant="outline" size="sm" className="w-full text-xs">
+                            すべてのアラート
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 )}
               </DropdownMenuContent>
@@ -144,13 +205,13 @@ export function Layout({ children }: LayoutProps) {
                 <div className="text-sm font-medium">倉庫ユーザー</div>
                 <div className="text-xs text-muted-foreground">管理者</div>
               </div>
-              <Select defaultValue={storeOptions[0]?.id?.toString() || "all"}>
+              <Select defaultValue={storeOptions[0]?.name || "店舗1"}>
                 <SelectTrigger className="w-32" data-testid="select-store">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {storeOptions.map((store: any) => (
-                    <SelectItem key={store.id} value={store.id.toString()}>
+                    <SelectItem key={store.id} value={store.name}>
                       {store.name}
                     </SelectItem>
                   ))}
