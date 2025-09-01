@@ -337,56 +337,113 @@ export class DatabaseStorage implements IStorage {
 
   async getShippingInstructions(): Promise<(ShippingInstruction & { product: Product; fromLocation: Location; toLocation: Location; creator: User })[]> {
     return await db
-      .select()
+      .select({
+        shippingInstruction: shippingInstructions,
+        product: products,
+        fromLocation: {
+          id: sql`fl.id`,
+          name: sql`fl.name`,
+          type: sql`fl.type`,
+          displayOrder: sql`fl.display_order`,
+          isActive: sql`fl.is_active`,
+        },
+        toLocation: {
+          id: sql`tl.id`,
+          name: sql`tl.name`,
+          type: sql`tl.type`,
+          displayOrder: sql`tl.display_order`,
+          isActive: sql`tl.is_active`,
+        },
+        creator: users,
+      })
       .from(shippingInstructions)
       .leftJoin(products, eq(shippingInstructions.productId, products.id))
-      .leftJoin(locations, eq(shippingInstructions.fromLocationId, locations.id))
+      .leftJoin(sql`locations fl`, sql`${shippingInstructions.fromLocationId} = fl.id`)
+      .leftJoin(sql`locations tl`, sql`${shippingInstructions.toLocationId} = tl.id`)
       .leftJoin(users, eq(shippingInstructions.createdBy, users.id))
       .orderBy(desc(shippingInstructions.createdAt))
       .then(rows => rows.map(row => ({ 
-        ...row.shipping_instructions, 
-        product: row.products!,
-        fromLocation: row.locations!,
-        toLocation: row.locations!,
-        creator: row.users!
+        ...row.shippingInstruction, 
+        product: row.product!,
+        fromLocation: row.fromLocation as Location,
+        toLocation: row.toLocation as Location,
+        creator: row.creator!
       })));
   }
 
   async getPendingShippingInstructions(): Promise<(ShippingInstruction & { product: Product; fromLocation: Location; toLocation: Location; creator: User })[]> {
     return await db
-      .select()
+      .select({
+        shippingInstruction: shippingInstructions,
+        product: products,
+        fromLocation: {
+          id: sql`fl.id`,
+          name: sql`fl.name`,
+          type: sql`fl.type`,
+          displayOrder: sql`fl.display_order`,
+          isActive: sql`fl.is_active`,
+        },
+        toLocation: {
+          id: sql`tl.id`,
+          name: sql`tl.name`,
+          type: sql`tl.type`,
+          displayOrder: sql`tl.display_order`,
+          isActive: sql`tl.is_active`,
+        },
+        creator: users,
+      })
       .from(shippingInstructions)
       .leftJoin(products, eq(shippingInstructions.productId, products.id))
-      .leftJoin(locations, eq(shippingInstructions.fromLocationId, locations.id))
+      .leftJoin(sql`locations fl`, sql`${shippingInstructions.fromLocationId} = fl.id`)
+      .leftJoin(sql`locations tl`, sql`${shippingInstructions.toLocationId} = tl.id`)
       .leftJoin(users, eq(shippingInstructions.createdBy, users.id))
       .where(eq(shippingInstructions.status, 'pending'))
       .orderBy(asc(shippingInstructions.requestedDate))
       .then(rows => rows.map(row => ({ 
-        ...row.shipping_instructions, 
-        product: row.products!,
-        fromLocation: row.locations!,
-        toLocation: row.locations!,
-        creator: row.users!
+        ...row.shippingInstruction, 
+        product: row.product!,
+        fromLocation: row.fromLocation as Location,
+        toLocation: row.toLocation as Location,
+        creator: row.creator!
       })));
   }
 
   async getShippingInstruction(id: number): Promise<(ShippingInstruction & { product: Product; fromLocation: Location; toLocation: Location; creator: User }) | undefined> {
     const [result] = await db
-      .select()
+      .select({
+        shippingInstruction: shippingInstructions,
+        product: products,
+        fromLocation: {
+          id: sql`fl.id`,
+          name: sql`fl.name`,
+          type: sql`fl.type`,
+          displayOrder: sql`fl.display_order`,
+          isActive: sql`fl.is_active`,
+        },
+        toLocation: {
+          id: sql`tl.id`,
+          name: sql`tl.name`,
+          type: sql`tl.type`,
+          displayOrder: sql`tl.display_order`,
+          isActive: sql`tl.is_active`,
+        },
+        creator: users,
+      })
       .from(shippingInstructions)
       .leftJoin(products, eq(shippingInstructions.productId, products.id))
-      .leftJoin(locations, eq(shippingInstructions.fromLocationId, locations.id))
+      .leftJoin(sql`locations fl`, sql`${shippingInstructions.fromLocationId} = fl.id`)
+      .leftJoin(sql`locations tl`, sql`${shippingInstructions.toLocationId} = tl.id`)
       .leftJoin(users, eq(shippingInstructions.createdBy, users.id))
       .where(eq(shippingInstructions.id, id));
 
     if (!result) return undefined;
 
     return { 
-      ...result.shipping_instructions, 
-      product: result.products!,
-      fromLocation: result.locations!,
-      toLocation: result.locations!,
-      creator: result.users!
+      ...result.shippingInstruction, 
+      product: result.product!,
+      fromLocation: result.fromLocation as Location,
+      toLocation: result.toLocation as Location,
+      creator: result.creator!
     };
   }
 
@@ -535,6 +592,12 @@ export class DatabaseStorage implements IStorage {
         minStock: replenishmentCriteria.minStock,
         targetStock: replenishmentCriteria.targetStock,
         shortageAmount: sql<number>`${replenishmentCriteria.minStock} - COALESCE(${inventoryBalances.quantity}, 0)`.as('shortageAmount'),
+        pendingShipments: sql<number>`
+          (SELECT COUNT(*) FROM ${shippingInstructions} si 
+           WHERE si.product_id = ${replenishmentCriteria.productId} 
+           AND si.to_location_id = ${replenishmentCriteria.locationId} 
+           AND si.status = 'pending')
+        `.as('pendingShipments'),
       })
       .from(replenishmentCriteria)
       .leftJoin(products, eq(replenishmentCriteria.productId, products.id))
@@ -551,7 +614,12 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(products.isActive, 1),
           eq(locations.isActive, 1),
-          lt(sql`COALESCE(${inventoryBalances.quantity}, 0)`, replenishmentCriteria.minStock)
+          lt(sql`COALESCE(${inventoryBalances.quantity}, 0)`, replenishmentCriteria.minStock),
+          // Exclude items that have pending shipments
+          sql`(SELECT COUNT(*) FROM ${shippingInstructions} si 
+               WHERE si.product_id = ${replenishmentCriteria.productId} 
+               AND si.to_location_id = ${replenishmentCriteria.locationId} 
+               AND si.status = 'pending') = 0`
         )
       )
       .orderBy(desc(sql`${replenishmentCriteria.minStock} - COALESCE(${inventoryBalances.quantity}, 0)`))

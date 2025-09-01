@@ -213,6 +213,7 @@ export default function Shipping() {
       queryClient.invalidateQueries({ queryKey: ["/api/shipping"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shipping/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/history"] });
       
     } catch (error) {
       console.error("Shipping creation error:", error);

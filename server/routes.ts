@@ -233,13 +233,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertShippingInstructionSchema.parse(requestData);
       const instruction = await storage.createShippingInstruction(data);
       
-      // Create history entry
+      // Create history entry (information only - no inventory movement)
       await storage.createHistoryEntry({
         operationType: '出荷指示作成',
         productId: data.productId,
         quantity: data.quantity,
-        fromLocationId: data.fromLocationId,
-        toLocationId: data.toLocationId,
+        fromLocationId: null, // No inventory movement on creation
+        toLocationId: null,   // No inventory movement on creation
         referenceId: instruction.id.toString(),
         memo: data.memo,
         performedBy: data.createdBy,
