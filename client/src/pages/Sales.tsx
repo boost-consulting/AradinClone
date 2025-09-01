@@ -33,7 +33,7 @@ export default function Sales() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
-  const [selectedStore, setSelectedStore] = useState("1");
+  const [selectedStore, setSelectedStore] = useState("all");
   const [searchSku, setSearchSku] = useState("");
   const [salesForm, setSalesForm] = useState({
     sku: "",
@@ -53,7 +53,7 @@ export default function Sales() {
 
   const { data: storeInventory, isLoading } = useQuery<InventoryBalance[]>({
     queryKey: ["/api/inventory", selectedStore],
-    enabled: !!selectedStore,
+    enabled: !!selectedStore && selectedStore !== "all",
   });
 
   // Mutations
@@ -88,11 +88,12 @@ export default function Sales() {
   const currentStore = stores.find((s: any) => s.id.toString() === selectedStore);
 
   // Filter inventory for current store and normal state
-  const storeNormalInventory = storeInventory?.filter(item => 
-    item.locationId.toString() === selectedStore && 
-    item.state === '通常' &&
-    item.quantity > 0
-  ) || [];
+  const storeNormalInventory = selectedStore === "all" ? [] : 
+    storeInventory?.filter(item => 
+      item.locationId.toString() === selectedStore && 
+      item.state === '通常' &&
+      item.quantity > 0
+    ) || [];
 
   // Filter inventory based on search
   const filteredInventory = storeNormalInventory.filter(item =>
@@ -176,6 +177,7 @@ export default function Sales() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">すべての店舗</SelectItem>
                 {stores.map((store: any) => (
                   <SelectItem key={store.id} value={store.id.toString()}>
                     {store.name}
@@ -208,7 +210,9 @@ export default function Sales() {
               </div>
 
               <div className="max-h-96 overflow-y-auto">
-                {isLoading ? (
+                {selectedStore === "all" ? (
+                  <p className="text-muted-foreground py-4">販売対象の店舗を選択してください</p>
+                ) : isLoading ? (
                   <p>読み込み中...</p>
                 ) : filteredInventory.length > 0 ? (
                   <div className="space-y-2">

@@ -562,7 +562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // History
   app.get("/api/history", async (req, res) => {
     try {
-      const { limit, productId, locationId } = req.query;
+      const { limit, productId, locationId, types } = req.query;
       
       let history;
       if (productId) {
@@ -571,7 +571,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           locationId ? parseInt(locationId as string) : undefined
         );
       } else {
-        history = await storage.getInventoryHistory(limit ? parseInt(limit as string) : 20);
+        history = await storage.getInventoryHistory(
+          limit ? parseInt(limit as string) : 20,
+          types ? (types as string).split(',') : undefined
+        );
       }
       
       res.json(history);

@@ -4,10 +4,48 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { HistoryEntry } from "@/lib/types";
 import { format } from "date-fns";
+import { useLocation } from "wouter";
 
-export function HistorySidebar() {
+interface HistorySidebarProps {
+  filter?: string; // Page context filter for operation types
+}
+
+export function HistorySidebar({ filter }: HistorySidebarProps) {
+  const [location] = useLocation();
+  
+  // Auto-detect filter based on current page if not provided
+  const getPageFilter = () => {
+    if (filter) return filter;
+    
+    if (location.includes('/warehouse')) {
+      return '仕入受入,棚入れ,在庫確保,返品受入,返品検品';
+    } else if (location.includes('/shipping')) {
+      return '出荷指示作成,出荷確定';
+    } else if (location.includes('/sales')) {
+      return '販売,顧客返品';
+    } else if (location.includes('/returns')) {
+      return '顧客返品,返品受入,返品検品,店舗返品送付';
+    }
+    return undefined; // Show all on dashboard and inventory pages
+  };
+  
+  const effectiveFilter = getPageFilter();
+  
   const { data: history, isLoading } = useQuery<HistoryEntry[]>({
-    queryKey: ["/api/history?limit=20"],
+    queryKey: ["/api/history", { types: effectiveFilter, limit: 20 }],
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("limit", "20");
+      if (effectiveFilter) {
+        searchParams.set("types", effectiveFilter);
+      }
+      
+      const response = await fetch(`/api/history?${searchParams}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      return response.json();
+    },
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 

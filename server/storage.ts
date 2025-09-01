@@ -9,7 +9,7 @@ import {
   type InventoryState, type OperationType
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, lt, sql } from "drizzle-orm";
+import { eq, and, desc, asc, lt, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -393,13 +393,19 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getInventoryHistory(limit: number = 20): Promise<(InventoryHistory & { product: Product; fromLocation?: Location; toLocation?: Location; performer: User })[]> {
-    return await db
+  async getInventoryHistory(limit: number = 20, operationTypes?: string[]): Promise<(InventoryHistory & { product: Product; fromLocation?: Location; toLocation?: Location; performer: User })[]> {
+    let query = db
       .select()
       .from(inventoryHistory)
       .leftJoin(products, eq(inventoryHistory.productId, products.id))
       .leftJoin(locations, eq(inventoryHistory.fromLocationId, locations.id))
-      .leftJoin(users, eq(inventoryHistory.performedBy, users.id))
+      .leftJoin(users, eq(inventoryHistory.performedBy, users.id));
+
+    if (operationTypes && operationTypes.length > 0) {
+      query = query.where(inArray(inventoryHistory.operationType, operationTypes));
+    }
+
+    return await query
       .orderBy(desc(inventoryHistory.performedAt))
       .limit(limit)
       .then(rows => rows.map(row => ({ 

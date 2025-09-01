@@ -55,7 +55,7 @@ export default function Shipping() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
-  const [selectedStore, setSelectedStore] = useState("1");
+  const [selectedStore, setSelectedStore] = useState("all");
   const [shippingForm, setShippingForm] = useState({
     sku: "",
     quantity: "",
@@ -119,19 +119,22 @@ export default function Shipping() {
   const currentStore = stores.find((s: any) => s.id.toString() === selectedStore);
 
   // Filter alerts for current store
-  const storeAlerts = lowStockAlerts?.filter(alert => 
-    alert.location.id.toString() === selectedStore
-  ) || [];
+  const storeAlerts = selectedStore === "all" ? [] : 
+    lowStockAlerts?.filter(alert => 
+      alert.location.id.toString() === selectedStore
+    ) || [];
 
   // Filter pending shipments for current store
-  const storePendingShipments = pendingShipments?.filter(shipment =>
-    shipment.toLocation.name === currentStore?.name
-  ) || [];
+  const storePendingShipments = selectedStore === "all" ? [] : 
+    pendingShipments?.filter(shipment =>
+      shipment.toLocation.name === currentStore?.name
+    ) || [];
 
   // Filter completed shipments for current store (recent 20)
-  const storeCompletedShipments = completedShipments?.filter(shipment =>
-    shipment.toLocation.name === currentStore?.name && shipment.status === 'completed'
-  ).slice(0, 20) || [];
+  const storeCompletedShipments = selectedStore === "all" ? [] : 
+    completedShipments?.filter(shipment =>
+      shipment.toLocation.name === currentStore?.name && shipment.status === 'completed'
+    ).slice(0, 20) || [];
 
   const handleCreateShipping = async () => {
     try {
@@ -186,6 +189,7 @@ export default function Shipping() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">すべての店舗</SelectItem>
                 {stores.map((store: any) => (
                   <SelectItem key={store.id} value={store.id.toString()}>
                     {store.name}
@@ -209,7 +213,12 @@ export default function Shipping() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {storeAlerts.length > 0 ? (
+              {selectedStore === "all" ? (
+                <div className="flex flex-col items-center py-6 text-muted-foreground">
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-center">店舗を選択してください</p>
+                </div>
+              ) : storeAlerts.length > 0 ? (
                 storeAlerts.map((alert) => (
                   <div 
                     key={`${alert.product.id}-${alert.location.id}`}
@@ -253,7 +262,12 @@ export default function Shipping() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {storePendingShipments.length > 0 ? (
+              {selectedStore === "all" ? (
+                <div className="flex flex-col items-center py-6 text-muted-foreground">
+                  <Package className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-center">店舗を選択してください</p>
+                </div>
+              ) : storePendingShipments.length > 0 ? (
                 storePendingShipments.map((shipment) => (
                   <div 
                     key={shipment.id}
