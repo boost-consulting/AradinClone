@@ -125,6 +125,28 @@ export default function Shipping() {
     },
   });
 
+  const confirmShippingMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("POST", `/api/shipping/${id}/confirm`, {});
+    },
+    onSuccess: () => {
+      toast({
+        title: "成功",
+        description: "出荷指示を実行しました",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/shipping"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const stores = locations?.filter((l: any) => l.type === 'store')
     .sort((a: any, b: any) => a.displayOrder - b.displayOrder)
     .filter((store: any, index: number, arr: any[]) => 
@@ -308,6 +330,17 @@ export default function Shipping() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       作成: {format(new Date(shipment.createdAt), 'M/d HH:mm')}
+                    </div>
+                    <div className="mt-2">
+                      <Button
+                        size="sm"
+                        onClick={() => confirmShippingMutation.mutate(shipment.id)}
+                        disabled={confirmShippingMutation.isPending}
+                        className="w-full"
+                        data-testid={`button-confirm-shipment-${shipment.id}`}
+                      >
+                        {confirmShippingMutation.isPending ? "処理中..." : "出荷実行"}
+                      </Button>
                     </div>
                   </div>
                 ))

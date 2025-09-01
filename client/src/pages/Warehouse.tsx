@@ -44,9 +44,8 @@ export default function Warehouse() {
     supplier: "",
     date: "",
     sku: "",
-    quantity: "",
-    goodQuality: "",
-    defectiveQuality: "",
+    goodQuantity: "",
+    defectiveQuantity: "",
     shelf: "",
   });
   const [returnsForm, setReturnsForm] = useState({
@@ -158,25 +157,46 @@ export default function Warehouse() {
         throw new Error("商品または棚が見つかりません");
       }
 
-      // First, add to inspection state
-      await adjustInventoryMutation.mutateAsync({
-        productId: product.id,
-        locationId: warehouseLocation.id,
-        toState: "検品中",
-        quantity: parseInt(receivingForm.quantity),
-        operationType: "仕入受入",
-        performedBy: user?.username,
-        memo: `仕入先: ${receivingForm.supplier}`,
-      });
+      const goodQty = parseInt(receivingForm.goodQuantity || "0");
+      const defectiveQty = parseInt(receivingForm.defectiveQuantity || "0");
+
+      if (goodQty <= 0 && defectiveQty <= 0) {
+        throw new Error("数量を入力してください");
+      }
+
+      // Add good quality directly to normal state
+      if (goodQty > 0) {
+        await adjustInventoryMutation.mutateAsync({
+          productId: product.id,
+          locationId: warehouseLocation.id,
+          toState: "通常",
+          quantity: goodQty,
+          operationType: "仕入受入",
+          performedBy: user?.username,
+          memo: `仕入先: ${receivingForm.supplier} (良品)`,
+        });
+      }
+
+      // Add defective quality directly to defective state
+      if (defectiveQty > 0) {
+        await adjustInventoryMutation.mutateAsync({
+          productId: product.id,
+          locationId: warehouseLocation.id,
+          toState: "不良",
+          quantity: defectiveQty,
+          operationType: "仕入受入",
+          performedBy: user?.username,
+          memo: `仕入先: ${receivingForm.supplier} (不良品)`,
+        });
+      }
 
       // Reset form
       setReceivingForm({
         supplier: "",
         date: "",
         sku: "",
-        quantity: "",
-        goodQuality: "",
-        defectiveQuality: "",
+        goodQuantity: "",
+        defectiveQuantity: "",
         shelf: "",
       });
     } catch (error) {
@@ -184,60 +204,6 @@ export default function Warehouse() {
     }
   };
 
-  const handleShelfPlacement = async () => {
-    try {
-      const product = products?.find((p: any) => p.sku === receivingForm.sku);
-      const warehouseLocation = locations?.find((l: any) => l.name === receivingForm.shelf);
-      
-      if (!product || !warehouseLocation) {
-        throw new Error("商品または棚が見つかりません");
-      }
-
-      const goodQty = parseInt(receivingForm.goodQuality || "0");
-      const defectiveQty = parseInt(receivingForm.defectiveQuality || "0");
-
-      // Move good quality to normal
-      if (goodQty > 0) {
-        await adjustInventoryMutation.mutateAsync({
-          productId: product.id,
-          locationId: warehouseLocation.id,
-          fromState: "検品中",
-          toState: "通常",
-          quantity: goodQty,
-          operationType: "棚入れ",
-          performedBy: user?.username,
-          memo: "良品として棚入れ",
-        });
-      }
-
-      // Move defective to defective state
-      if (defectiveQty > 0) {
-        await adjustInventoryMutation.mutateAsync({
-          productId: product.id,
-          locationId: warehouseLocation.id,
-          fromState: "検品中",
-          toState: "不良",
-          quantity: defectiveQty,
-          operationType: "棚入れ",
-          performedBy: user?.username,
-          memo: "不良品として分別",
-        });
-      }
-
-      // Reset form
-      setReceivingForm({
-        supplier: "",
-        date: "",
-        sku: "",
-        quantity: "",
-        goodQuality: "",
-        defectiveQuality: "",
-        shelf: "",
-      });
-    } catch (error) {
-      console.error("Shelf placement error:", error);
-    }
-  };
 
   const handleReturnsInspection = async () => {
     try {
@@ -355,7 +321,7 @@ export default function Warehouse() {
       <Tabs defaultValue="shipping" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="shipping" data-testid="tab-shipping">出荷処理</TabsTrigger>
-          <TabsTrigger value="receiving" data-testid="tab-receiving">仕入受入・棚入れ</TabsTrigger>
+          <TabsTrigger value="receiving" data-testid="tab-receiving">仕入受入</TabsTrigger>
           <TabsTrigger value="returns" data-testid="tab-returns">返品受入・検品</TabsTrigger>
         </TabsList>
 
@@ -417,68 +383,55 @@ export default function Warehouse() {
           </Card>
         </TabsContent>
 
-        {/* Receiving and Shelving Tab */}
+        {/* Receiving Tab */}
         <TabsContent value="receiving">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Receiving Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Package className="h-5 w-5" />
-                  <span>仕入受入</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="supplier">仕入先</Label>
-                    <Input
-                      id="supplier"
-                      value={receivingForm.supplier}
-                      onChange={(e) => setReceivingForm(prev => ({ ...prev, supplier: e.target.value }))}
-                      data-testid="input-supplier"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="date">日付</Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      value={receivingForm.date}
-                      onChange={(e) => setReceivingForm(prev => ({ ...prev, date: e.target.value }))}
-                      data-testid="input-date"
-                    />
-                  </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Package className="h-5 w-5" />
+                <span>仕入受入</span>
+              </CardTitle>
+              <CardDescription>仕入商品を受入し、良品・不良品を分別して登録します</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="supplier">仕入先</Label>
+                  <Input
+                    id="supplier"
+                    value={receivingForm.supplier}
+                    onChange={(e) => setReceivingForm(prev => ({ ...prev, supplier: e.target.value }))}
+                    data-testid="input-supplier"
+                  />
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sku">SKU</Label>
-                    <Select value={receivingForm.sku} onValueChange={(value) => setReceivingForm(prev => ({ ...prev, sku: value }))}>
-                      <SelectTrigger data-testid="select-receiving-sku">
-                        <SelectValue placeholder="SKUを選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products?.map((product: any) => (
-                          <SelectItem key={product.id} value={product.sku}>
-                            {product.sku} - {product.modelName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="quantity">受入数量</Label>
-                    <Input
-                      id="quantity"
-                      type="number"
-                      value={receivingForm.quantity}
-                      onChange={(e) => setReceivingForm(prev => ({ ...prev, quantity: e.target.value }))}
-                      data-testid="input-receiving-quantity"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="date">日付</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={receivingForm.date}
+                    onChange={(e) => setReceivingForm(prev => ({ ...prev, date: e.target.value }))}
+                    data-testid="input-date"
+                  />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sku">SKU</Label>
+                  <Select value={receivingForm.sku} onValueChange={(value) => setReceivingForm(prev => ({ ...prev, sku: value }))}>
+                    <SelectTrigger data-testid="select-receiving-sku">
+                      <SelectValue placeholder="SKUを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products?.map((product: any) => (
+                        <SelectItem key={product.id} value={product.sku}>
+                          {product.sku} - {product.modelName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="shelf">棚</Label>
                   <Select value={receivingForm.shelf} onValueChange={(value) => setReceivingForm(prev => ({ ...prev, shelf: value }))}>
@@ -494,58 +447,41 @@ export default function Warehouse() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
-                <Button 
-                  onClick={handleReceiving}
-                  disabled={adjustInventoryMutation.isPending}
-                  className="w-full"
-                  data-testid="button-register-receiving"
-                >
-                  受入を登録
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Shelf Placement Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle>棚入れ確定</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="good-quality">良品数量</Label>
-                    <Input
-                      id="good-quality"
-                      type="number"
-                      value={receivingForm.goodQuality}
-                      onChange={(e) => setReceivingForm(prev => ({ ...prev, goodQuality: e.target.value }))}
-                      data-testid="input-good-quality"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="defective-quality">不良品数量</Label>
-                    <Input
-                      id="defective-quality"
-                      type="number"
-                      value={receivingForm.defectiveQuality}
-                      onChange={(e) => setReceivingForm(prev => ({ ...prev, defectiveQuality: e.target.value }))}
-                      data-testid="input-defective-quality"
-                    />
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="good-quantity">良品数量</Label>
+                  <Input
+                    id="good-quantity"
+                    type="number"
+                    value={receivingForm.goodQuantity}
+                    onChange={(e) => setReceivingForm(prev => ({ ...prev, goodQuantity: e.target.value }))}
+                    data-testid="input-good-quantity"
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="defective-quantity">不良品数量</Label>
+                  <Input
+                    id="defective-quantity"
+                    type="number"
+                    value={receivingForm.defectiveQuantity}
+                    onChange={(e) => setReceivingForm(prev => ({ ...prev, defectiveQuantity: e.target.value }))}
+                    data-testid="input-defective-quantity"
+                  />
+                </div>
+              </div>
 
-                <Button 
-                  onClick={handleShelfPlacement}
-                  disabled={adjustInventoryMutation.isPending}
-                  className="w-full"
-                  data-testid="button-confirm-shelf-placement"
-                >
-                  棚入れを確定
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              <Button 
+                onClick={handleReceiving}
+                disabled={adjustInventoryMutation.isPending}
+                className="w-full"
+                data-testid="button-register-receiving"
+              >
+                {adjustInventoryMutation.isPending ? "処理中..." : "受入を登録"}
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Returns Receiving and Inspection Tab */}
