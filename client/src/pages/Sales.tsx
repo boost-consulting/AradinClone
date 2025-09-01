@@ -65,6 +65,11 @@ export default function Sales() {
   const { data: storeInventory, isLoading } = useQuery<InventoryBalance[]>({
     queryKey: ["/api/inventory", selectedStore],
     enabled: !!selectedStore && selectedStore !== "all",
+    queryFn: async () => {
+      const response = await fetch(`/api/inventory?locationId=${selectedStore}`);
+      if (!response.ok) throw new Error('Failed to fetch inventory');
+      return response.json();
+    },
   });
 
   // Mutations

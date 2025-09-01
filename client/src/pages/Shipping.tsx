@@ -165,7 +165,7 @@ export default function Shipping() {
         fromLocationId: warehouseLocation.id,
         toLocationId: currentStore.id,
         quantity: parseInt(shippingForm.quantity),
-        requestedDate: shippingForm.requestedDate ? new Date(shippingForm.requestedDate).toISOString() : null,
+        requestedDate: shippingForm.requestedDate ? new Date(shippingForm.requestedDate) : null,
         memo: shippingForm.memo,
       });
     } catch (error) {
