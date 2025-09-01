@@ -160,12 +160,22 @@ export default function Shipping() {
         throw new Error("必要な情報が不足しています");
       }
 
+      // Validate and format the requested date
+      let formattedRequestedDate = null;
+      if (shippingForm.requestedDate && shippingForm.requestedDate.trim() !== "") {
+        try {
+          formattedRequestedDate = new Date(shippingForm.requestedDate).toISOString();
+        } catch (error) {
+          throw new Error("無効な日付形式です");
+        }
+      }
+
       await createShippingMutation.mutateAsync({
         productId: selectedProduct.id,
         fromLocationId: warehouseLocation.id,
         toLocationId: currentStore.id,
         quantity: parseInt(shippingForm.quantity),
-        requestedDate: shippingForm.requestedDate ? new Date(shippingForm.requestedDate) : null,
+        requestedDate: formattedRequestedDate,
         memo: shippingForm.memo,
       });
     } catch (error) {
