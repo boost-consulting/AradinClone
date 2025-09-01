@@ -197,8 +197,10 @@ export default function Shipping() {
         fromLocationId: warehouseLocation.id,
         toLocationId: currentStore.id,
         quantity: parseInt(shippingForm.quantity),
+        status: "pending",
         requestedDate: formattedRequestedDate,
         memo: shippingForm.memo,
+        createdBy: user?.username,
       });
     } catch (error) {
       console.error("Shipping creation error:", error);
@@ -400,7 +402,24 @@ export default function Shipping() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="shipping-sku">SKU</Label>
-              <Select value={shippingForm.sku} onValueChange={(value) => setShippingForm(prev => ({ ...prev, sku: value }))}>
+              <Select 
+                value={shippingForm.sku} 
+                onValueChange={(value) => {
+                  // Auto-fill recommended quantity based on low stock alert for current store
+                  const alert = storeAlerts.find(a => a.product.sku === value);
+                  if (alert && selectedStore !== "all") {
+                    const recommendedQuantity = Math.max(0, alert.targetStock - alert.currentStock);
+                    setShippingForm(prev => ({ 
+                      ...prev, 
+                      sku: value,
+                      quantity: recommendedQuantity.toString(),
+                      memo: `少数アラートによる補充要求（現在庫: ${alert.currentStock}、基準: ${alert.targetStock}）`
+                    }));
+                  } else {
+                    setShippingForm(prev => ({ ...prev, sku: value }));
+                  }
+                }}
+              >
                 <SelectTrigger data-testid="select-shipping-sku">
                   <SelectValue placeholder="SKUを選択" />
                 </SelectTrigger>
