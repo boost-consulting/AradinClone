@@ -67,21 +67,33 @@ export default function Inventory() {
     queryKey: ["/api/locations"],
   });
 
+  const { data: replenishmentCriteria } = useQuery<any[]>({
+    queryKey: ["/api/replenishment"],
+  });
+
   const { data: inventoryHistory } = useQuery<InventoryHistory[]>({
     queryKey: ["/api/history", selectedDetail?.productId, selectedDetail?.locationId],
     enabled: !!selectedDetail,
   });
 
-  // Group inventory balances by SKU and location
+  // Group inventory balances by SKU and location with shortage calculation
   const groupedInventory = inventoryBalances?.reduce((acc, balance) => {
     const key = `${balance.product.sku}-${balance.location.name}`;
     if (!acc[key]) {
+      // Find replenishment criteria for this product/location combination
+      const criteria = replenishmentCriteria?.find(c => 
+        c.productId === balance.product.id && c.locationId === balance.location.id
+      );
+      
       acc[key] = {
         product: balance.product,
         location: balance.location,
         states: {},
         total: 0,
         lastUpdated: balance.lastUpdated,
+        minStock: criteria?.minStock || null,
+        targetStock: criteria?.targetStock || null,
+        shortageAmount: 0, // Will be calculated after all states are processed
       };
     }
     acc[key].states[balance.state] = balance.quantity;
@@ -91,6 +103,14 @@ export default function Inventory() {
     }
     return acc;
   }, {} as Record<string, any>) || {};
+
+  // Calculate shortage amounts after grouping
+  Object.values(groupedInventory).forEach((item: any) => {
+    const normalStock = item.states['通常'] || 0;
+    if (item.minStock !== null && normalStock < item.minStock) {
+      item.shortageAmount = item.minStock - normalStock;
+    }
+  });
 
   // Filter inventory based on search criteria
   const filteredInventory = Object.values(groupedInventory).filter((item: any) => {
@@ -103,7 +123,10 @@ export default function Inventory() {
     if (selectedState !== "all" && !(item.states[selectedState] > 0)) {
       return false;
     }
-    // TODO: Implement low stock filtering based on replenishment criteria
+    // Low stock filtering based on replenishment criteria
+    if (showLowStockOnly && item.shortageAmount === 0) {
+      return false;
+    }
     return true;
   });
 
@@ -227,6 +250,8 @@ export default function Inventory() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">検品中</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">不良</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">合計</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">下限</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">不足</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">最終更新</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">明細</th>
                 </tr>
@@ -258,6 +283,16 @@ export default function Inventory() {
                       </td>
                       <td className="px-4 py-3 text-sm font-bold" data-testid={`qty-total-${item.product.sku}-${item.location.id}`}>
                         {item.total}
+                      </td>
+                      <td className="px-4 py-3 text-sm" data-testid={`min-stock-${item.product.sku}-${item.location.id}`}>
+                        {item.minStock !== null ? item.minStock : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm" data-testid={`shortage-${item.product.sku}-${item.location.id}`}>
+                        {item.shortageAmount > 0 ? (
+                          <span className="font-bold text-red-600">{item.shortageAmount}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {formatDate(item.lastUpdated)}

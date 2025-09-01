@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 import { Plus, Edit, Search, Settings, Package, MapPin, RefreshCw, AlertTriangle } from "lucide-react";
 
 interface Product {
@@ -45,6 +46,7 @@ interface ReplenishmentCriteria {
 export default function Master() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   const [searchProduct, setSearchProduct] = useState("");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -797,47 +799,61 @@ export default function Master() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Demo Data Reset */}
-              <div className="p-4 border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800 rounded-lg">
-                <div className="flex items-start space-x-3">
-                  <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
-                  <div className="flex-1">
-                    <h3 className="font-medium text-orange-800 dark:text-orange-200">デモデータ再作成</h3>
-                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
-                      すべてのデータを削除して、初期デモデータを再作成します。この操作は取り消せません。
-                    </p>
-                    
-                    {!showResetConfirm ? (
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowResetConfirm(true)}
-                        className="mt-3 border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
-                        data-testid="button-show-reset-confirm"
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        デモデータを再作成
-                      </Button>
-                    ) : (
-                      <div className="mt-3 space-x-2">
-                        <Button
-                          variant="destructive"
-                          onClick={() => resetDemoDataMutation.mutate()}
-                          disabled={resetDemoDataMutation.isPending}
-                          data-testid="button-confirm-reset"
-                        >
-                          {resetDemoDataMutation.isPending ? "処理中..." : "実行"}
-                        </Button>
+              {user?.role === 'admin' ? (
+                <div className="p-4 border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-medium text-orange-800 dark:text-orange-200">デモデータ再作成</h3>
+                      <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                        すべてのデータを削除して、初期デモデータを再作成します。この操作は取り消せません。
+                      </p>
+                      
+                      {!showResetConfirm ? (
                         <Button
                           variant="outline"
-                          onClick={() => setShowResetConfirm(false)}
-                          data-testid="button-cancel-reset"
+                          onClick={() => setShowResetConfirm(true)}
+                          className="mt-3 border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
+                          data-testid="button-show-reset-confirm"
                         >
-                          キャンセル
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          デモデータを再作成
                         </Button>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="mt-3 space-x-2">
+                          <Button
+                            variant="destructive"
+                            onClick={() => resetDemoDataMutation.mutate()}
+                            disabled={resetDemoDataMutation.isPending}
+                            data-testid="button-confirm-reset"
+                          >
+                            {resetDemoDataMutation.isPending ? "処理中..." : "実行"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowResetConfirm(false)}
+                            data-testid="button-cancel-reset"
+                          >
+                            キャンセル
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-4 border border-muted bg-muted/30 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <AlertTriangle className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-medium text-muted-foreground">管理者機能</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        デモデータの再作成は管理者権限が必要です。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Environment Info */}
               <div className="p-4 bg-muted/50 rounded-lg">

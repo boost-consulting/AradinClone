@@ -10,16 +10,16 @@ export async function seedDatabase() {
   console.log("🌱 Starting database seed...");
 
   try {
-    // Clear existing data in reverse dependency order
-    await db.delete(inventoryHistory);
-    await db.delete(shippingInstructions);
-    await db.delete(replenishmentCriteria);
-    await db.delete(inventoryBalances);
-    await db.delete(products);
-    await db.delete(locations);
-    await db.delete(users);
+    // Truncate all tables in reverse dependency order for clean reset
+    await db.execute(sql`TRUNCATE TABLE inventory_history CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE shipping_instructions CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE replenishment_criteria CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE inventory_balances CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE products CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE locations CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE users CASCADE`);
 
-    console.log("✅ Cleared existing data");
+    console.log("✅ Truncated all tables for clean reset");
 
     // 1. Create users first (required for foreign keys)
     const demoUsers = [

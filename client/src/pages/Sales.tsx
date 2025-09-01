@@ -33,7 +33,19 @@ export default function Sales() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
+  // Queries - locations must be first
+  const { data: locations } = useQuery<any[]>({
+    queryKey: ["/api/locations"],
+  });
+
   const [selectedStore, setSelectedStore] = useState("");
+  const [searchSku, setSearchSku] = useState("");
+  const [salesForm, setSalesForm] = useState({
+    sku: "",
+    quantity: "",
+    discountAmount: "",
+    discountPercent: "",
+  });
 
   // Set initial store when locations are loaded
   useEffect(() => {
@@ -45,18 +57,6 @@ export default function Sales() {
       }
     }
   }, [locations, selectedStore]);
-  const [searchSku, setSearchSku] = useState("");
-  const [salesForm, setSalesForm] = useState({
-    sku: "",
-    quantity: "",
-    discountAmount: "",
-    discountPercent: "",
-  });
-
-  // Queries
-  const { data: locations } = useQuery<any[]>({
-    queryKey: ["/api/locations"],
-  });
 
   const { data: products } = useQuery<any[]>({
     queryKey: ["/api/products"],

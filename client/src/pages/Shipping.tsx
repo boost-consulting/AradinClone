@@ -55,7 +55,18 @@ export default function Shipping() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
+  // Queries - locations must be first
+  const { data: locations } = useQuery<any[]>({
+    queryKey: ["/api/locations"],
+  });
+
   const [selectedStore, setSelectedStore] = useState("");
+  const [shippingForm, setShippingForm] = useState({
+    sku: "",
+    quantity: "",
+    requestedDate: "",
+    memo: "",
+  });
 
   // Set initial store when locations are loaded
   useEffect(() => {
@@ -67,17 +78,6 @@ export default function Shipping() {
       }
     }
   }, [locations, selectedStore]);
-  const [shippingForm, setShippingForm] = useState({
-    sku: "",
-    quantity: "",
-    requestedDate: "",
-    memo: "",
-  });
-
-  // Queries
-  const { data: locations } = useQuery<any[]>({
-    queryKey: ["/api/locations"],
-  });
 
   const { data: products } = useQuery<any[]>({
     queryKey: ["/api/products"],

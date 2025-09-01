@@ -287,7 +287,7 @@ export class DatabaseStorage implements IStorage {
         saleAmount: saleAmount?.toString(),
         memo,
         performedBy,
-        timestamp: new Date(),
+        performedAt: new Date(),
       });
     });
   }
@@ -448,7 +448,22 @@ export class DatabaseStorage implements IStorage {
       ) as OperationType[];
       
       if (validOperationTypes.length > 0) {
-        query = query.where(inArray(inventoryHistory.operationType, validOperationTypes));
+        return await db
+          .select()
+          .from(inventoryHistory)
+          .leftJoin(products, eq(inventoryHistory.productId, products.id))
+          .leftJoin(locations, eq(inventoryHistory.fromLocationId, locations.id))
+          .leftJoin(users, eq(inventoryHistory.performedBy, users.id))
+          .where(inArray(inventoryHistory.operationType, validOperationTypes))
+          .orderBy(desc(inventoryHistory.performedAt))
+          .limit(limit)
+          .then(rows => rows.map(row => ({ 
+            ...row.inventory_history, 
+            product: row.products!,
+            fromLocation: row.locations || undefined,
+            toLocation: row.locations || undefined,
+            performer: row.users!
+          })));
       }
     }
 
@@ -470,22 +485,40 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(inventoryHistory.performedAt));
 
     if (locationId) {
-      query = query.where(
-        and(
-          eq(inventoryHistory.productId, productId),
-          eq(inventoryHistory.fromLocationId, locationId)
+      return await db
+        .select()
+        .from(inventoryHistory)
+        .leftJoin(locations, eq(inventoryHistory.fromLocationId, locations.id))
+        .leftJoin(users, eq(inventoryHistory.performedBy, users.id))
+        .where(
+          and(
+            eq(inventoryHistory.productId, productId),
+            eq(inventoryHistory.fromLocationId, locationId)
+          )
         )
-      );
+        .orderBy(desc(inventoryHistory.performedAt))
+        .then(rows => rows.map(row => ({ 
+          ...row.inventory_history,
+          fromLocation: row.locations || undefined,
+          toLocation: row.locations || undefined,
+          performer: row.users!
+        })));
     } else {
-      query = query.where(eq(inventoryHistory.productId, productId));
+      return await db
+        .select()
+        .from(inventoryHistory)
+        .leftJoin(locations, eq(inventoryHistory.fromLocationId, locations.id))
+        .leftJoin(users, eq(inventoryHistory.performedBy, users.id))
+        .where(eq(inventoryHistory.productId, productId))
+        .orderBy(desc(inventoryHistory.performedAt))
+        .then(rows => rows.map(row => ({ 
+          ...row.inventory_history,
+          fromLocation: row.locations || undefined,
+          toLocation: row.locations || undefined,
+          performer: row.users!
+        })));
     }
 
-    return await query.then(rows => rows.map(row => ({ 
-      ...row.inventory_history,
-      fromLocation: row.locations || undefined,
-      toLocation: row.locations || undefined,
-      performer: row.users!
-      })));
   }
 
   async createHistoryEntry(entry: InsertInventoryHistory): Promise<InventoryHistory> {
@@ -530,6 +563,7 @@ export class DatabaseStorage implements IStorage {
       currentStock: row.currentStock || 0,
       minStock: row.minStock,
       targetStock: row.targetStock,
+      shortageAmount: row.shortageAmount || 0,
     }));
   }
 

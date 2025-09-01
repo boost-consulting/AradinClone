@@ -681,7 +681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/reset", requireAuth, requireRole('admin', 'warehouse'), async (req, res) => {
+  app.post("/api/admin/reset", requireAuth, requireRole('admin'), async (req, res) => {
     try {
       await resetAndReseed();
       res.json({ message: "Database reset and reseeded successfully" });
