@@ -171,6 +171,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Demo data management (admin only, development environment only)
+  app.post("/api/admin/reset-demo-data", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+      // Only allow in development environment
+      if (process.env.NODE_ENV === "production") {
+        return res.status(403).json({ message: "Demo data reset not allowed in production" });
+      }
+
+      await resetAndReseed();
+      res.json({ message: "Demo data reset and reseeded successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reset demo data" });
+    }
+  });
+
   // Inventory state summary
   app.get("/api/dashboard/inventory-summary", async (req, res) => {
     try {
@@ -283,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data.productId,
         data.locationId,
         data.fromState || null,
-        data.toState,
+        data.toState || null,
         data.quantity,
         data.operationType,
         performedBy,

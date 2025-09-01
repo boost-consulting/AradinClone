@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, Edit, Search, Settings, Package, MapPin } from "lucide-react";
+import { Plus, Edit, Search, Settings, Package, MapPin, RefreshCw, AlertTriangle } from "lucide-react";
 
 interface Product {
   id: number;
@@ -68,6 +68,9 @@ export default function Master() {
     type: "store" as "store" | "warehouse",
     displayOrder: "",
   });
+
+  // Demo data reset state
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Criteria form state
   const [criteriaForm, setCriteriaForm] = useState({
@@ -149,6 +152,28 @@ export default function Master() {
     onError: (error) => {
       toast({
         title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Demo data reset mutation
+  const resetDemoDataMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/admin/reset-demo-data", {});
+    },
+    onSuccess: () => {
+      toast({
+        title: "成功",
+        description: "デモデータを再作成しました",
+      });
+      queryClient.invalidateQueries();
+      setShowResetConfirm(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "エラー", 
         description: error.message,
         variant: "destructive",
       });
@@ -242,10 +267,11 @@ export default function Master() {
 
       {/* Main Tabs */}
       <Tabs defaultValue="products" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="products" data-testid="tab-products">商品</TabsTrigger>
           <TabsTrigger value="locations" data-testid="tab-locations">場所</TabsTrigger>
           <TabsTrigger value="criteria" data-testid="tab-criteria">補充基準</TabsTrigger>
+          <TabsTrigger value="admin" data-testid="tab-admin">管理</TabsTrigger>
         </TabsList>
 
         {/* Products Tab */}
@@ -757,6 +783,73 @@ export default function Master() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Admin Tab */}
+        <TabsContent value="admin">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Settings className="h-5 w-5" />
+                <span>システム管理</span>
+              </CardTitle>
+              <CardDescription>開発・デモ環境用の管理機能</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Demo Data Reset */}
+              <div className="p-4 border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-medium text-orange-800 dark:text-orange-200">デモデータ再作成</h3>
+                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                      すべてのデータを削除して、初期デモデータを再作成します。この操作は取り消せません。
+                    </p>
+                    
+                    {!showResetConfirm ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowResetConfirm(true)}
+                        className="mt-3 border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
+                        data-testid="button-show-reset-confirm"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        デモデータを再作成
+                      </Button>
+                    ) : (
+                      <div className="mt-3 space-x-2">
+                        <Button
+                          variant="destructive"
+                          onClick={() => resetDemoDataMutation.mutate()}
+                          disabled={resetDemoDataMutation.isPending}
+                          data-testid="button-confirm-reset"
+                        >
+                          {resetDemoDataMutation.isPending ? "処理中..." : "実行"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowResetConfirm(false)}
+                          data-testid="button-cancel-reset"
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Environment Info */}
+              <div className="p-4 bg-muted/50 rounded-lg">
+                <h3 className="font-medium mb-2">環境情報</h3>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p><strong>環境:</strong> 開発環境</p>
+                  <p><strong>データベース:</strong> PostgreSQL (Neon)</p>
+                  <p><strong>セッション:</strong> 有効</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

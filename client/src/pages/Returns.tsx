@@ -66,7 +66,11 @@ export default function Returns() {
     },
   });
 
-  const stores = locations?.filter((l: any) => l.type === 'store') || [];
+  const stores = locations?.filter((l: any) => l.type === 'store')
+    .sort((a: any, b: any) => a.displayOrder - b.displayOrder)
+    .filter((store: any, index: number, arr: any[]) => 
+      arr.findIndex((s: any) => s.name === store.name) === index
+    ) || [];
   const warehouses = locations?.filter((l: any) => l.type === 'warehouse') || [];
   const currentStore = stores.find((s: any) => s.id.toString() === selectedStore);
 
@@ -117,15 +121,13 @@ export default function Returns() {
         throw new Error("必要な情報が不足しています");
       }
 
-      // Reduce from store normal inventory
-      await adjustInventoryMutation.mutateAsync({
+      // Use dedicated returns API for store-to-warehouse return shipment
+      await apiRequest("POST", "/api/returns/ship", {
         productId: selectedProduct.id,
         locationId: currentStore.id,
         fromState: "通常",
-        toState: "通常",
-        quantity: -parseInt(warehouseReturnForm.quantity), // Negative for reduction
+        quantity: parseInt(warehouseReturnForm.quantity), // Positive quantity for reduction amount
         operationType: "店舗返品送付",
-        performedBy: user?.id || "system",
         memo: warehouseReturnForm.memo || "倉庫への返品送付",
       });
 

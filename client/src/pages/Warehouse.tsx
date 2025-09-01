@@ -132,7 +132,7 @@ export default function Warehouse() {
         toState: "確保",
         quantity: selectedShipment.quantity,
         operationType: "在庫確保",
-
+        performedBy: user?.username,
         memo: `出荷指示#${selectedShipment.id}に対する在庫確保`,
       });
     } catch (error) {
@@ -141,10 +141,11 @@ export default function Warehouse() {
   };
 
   const handleConfirmShipment = async () => {
-    if (!selectedShipment) return;
+    if (!selectedShipment || !user) return;
     
     await confirmShipmentMutation.mutateAsync({
       id: selectedShipment.id,
+      performedBy: user.username,
     });
   };
 
@@ -164,7 +165,7 @@ export default function Warehouse() {
         toState: "検品中",
         quantity: parseInt(receivingForm.quantity),
         operationType: "仕入受入",
-
+        performedBy: user?.username,
         memo: `仕入先: ${receivingForm.supplier}`,
       });
 
@@ -204,7 +205,7 @@ export default function Warehouse() {
           toState: "通常",
           quantity: goodQty,
           operationType: "棚入れ",
-  
+          performedBy: user?.username,
           memo: "良品として棚入れ",
         });
       }
@@ -218,7 +219,7 @@ export default function Warehouse() {
           toState: "不良",
           quantity: defectiveQty,
           operationType: "棚入れ",
-  
+          performedBy: user?.username,
           memo: "不良品として分別",
         });
       }
@@ -256,7 +257,7 @@ export default function Warehouse() {
         toState: targetState,
         quantity: parseInt(returnsForm.quantity),
         operationType: "返品検品",
-
+        performedBy: user?.username,
         memo: `返品検品結果: ${returnsForm.condition}`,
       });
 

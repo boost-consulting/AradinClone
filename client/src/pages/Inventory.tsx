@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { InventoryStatusBadge } from "@/components/InventoryStatusBadge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, Package } from "lucide-react";
 import { InventoryState } from "@/lib/types";
 
 interface InventoryBalance {

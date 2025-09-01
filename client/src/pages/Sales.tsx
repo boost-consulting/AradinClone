@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,18 @@ export default function Sales() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
-  const [selectedStore, setSelectedStore] = useState("店舗1");
+  const [selectedStore, setSelectedStore] = useState("");
+
+  // Set initial store when locations are loaded
+  useEffect(() => {
+    if (locations && selectedStore === "") {
+      const firstStore = locations.filter((l: any) => l.type === 'store')
+        .sort((a: any, b: any) => a.displayOrder - b.displayOrder)[0];
+      if (firstStore) {
+        setSelectedStore(firstStore.id.toString());
+      }
+    }
+  }, [locations, selectedStore]);
   const [searchSku, setSearchSku] = useState("");
   const [salesForm, setSalesForm] = useState({
     sku: "",
@@ -84,7 +95,11 @@ export default function Sales() {
     },
   });
 
-  const stores = locations?.filter((l: any) => l.type === 'store') || [];
+  const stores = locations?.filter((l: any) => l.type === 'store')
+    .sort((a: any, b: any) => a.displayOrder - b.displayOrder)
+    .filter((store: any, index: number, arr: any[]) => 
+      arr.findIndex((s: any) => s.name === store.name) === index
+    ) || [];
   const currentStore = stores.find((s: any) => s.id.toString() === selectedStore);
 
   // Filter inventory for current store and normal state
