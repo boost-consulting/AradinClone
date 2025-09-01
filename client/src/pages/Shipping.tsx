@@ -67,6 +67,7 @@ export default function Shipping() {
     requestedDate: "",
     memo: "",
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // Set initial store when locations are loaded
   useEffect(() => {
@@ -100,28 +101,22 @@ export default function Shipping() {
   // Mutations
   const createShippingMutation = useMutation({
     mutationFn: async (data: any) => {
-      await apiRequest("POST", "/api/shipping", data);
+      return await apiRequest("POST", "/api/shipping", data);
     },
-    onSuccess: () => {
-      toast({
-        title: "成功",
-        description: "出荷指示を作成しました",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/shipping"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
-      setShippingForm({
-        sku: "",
-        quantity: "",
-        requestedDate: "",
-        memo: "",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "エラー",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: any) => {
+      // Handle validation errors by setting form errors
+      if (error.message.includes('Validation error') && error.details?.errors) {
+        const newErrors: Record<string, string> = {};
+        error.details.errors.forEach((err: any) => {
+          if (err.path && err.path[0]) {
+            const fieldName = err.path[0];
+            newErrors[fieldName] = err.message;
+          }
+        });
+        setFormErrors(newErrors);
+      } else {
+        setFormErrors({ general: error.message || "出荷指示の作成に失敗しました" });
+      }
     },
   });
 
@@ -182,14 +177,13 @@ export default function Shipping() {
         throw new Error("必要な情報が不足しています");
       }
 
-      // Validate and format the requested date
+      // Clear previous errors
+      setFormErrors({});
+      
+      // Format the requested date - input type="date" already gives us YYYY-MM-DD
       let formattedRequestedDate = null;
       if (shippingForm.requestedDate && shippingForm.requestedDate.trim() !== "") {
-        try {
-          formattedRequestedDate = new Date(shippingForm.requestedDate).toISOString();
-        } catch (error) {
-          throw new Error("無効な日付形式です");
-        }
+        formattedRequestedDate = shippingForm.requestedDate; // Already in YYYY-MM-DD format from date input
       }
 
       await createShippingMutation.mutateAsync({
@@ -198,10 +192,50 @@ export default function Shipping() {
         toLocationId: currentStore.id,
         quantity: parseInt(shippingForm.quantity),
         requestedDate: formattedRequestedDate,
-        memo: shippingForm.memo,
+        memo: shippingForm.memo || null,
       });
+      // Clear form on success
+      setShippingForm({
+        sku: "",
+        quantity: "",
+        requestedDate: "",
+        memo: "",
+      });
+      setFormErrors({});
+      
+      toast({
+        title: "出荷指示作成完了",
+        description: "出荷指示が正常に作成されました。",
+      });
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["/api/shipping"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shipping/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      
     } catch (error) {
       console.error("Shipping creation error:", error);
+      
+      // Handle validation errors
+      if (error instanceof Error && error.message.includes('Validation error')) {
+        try {
+          const errorData = JSON.parse(error.message.split('Validation error: ')[1] || '{}');
+          if (errorData.errors) {
+            const newErrors: Record<string, string> = {};
+            errorData.errors.forEach((err: any) => {
+              if (err.path && err.path[0]) {
+                newErrors[err.path[0]] = err.message;
+              }
+            });
+            setFormErrors(newErrors);
+          }
+        } catch (parseError) {
+          // Fallback to generic error
+          setFormErrors({ general: "入力内容を確認してください" });
+        }
+      } else {
+        setFormErrors({ general: error instanceof Error ? error.message : "出荷指示の作成に失敗しました" });
+      }
     }
   };
 
@@ -469,6 +503,20 @@ export default function Shipping() {
               />
             </div>
           </div>
+
+          {/* Error Messages */}
+          {Object.keys(formErrors).length > 0 && (
+            <div className="rounded-md bg-destructive/15 p-3">
+              <div className="text-sm font-medium text-destructive mb-2">入力エラー:</div>
+              <div className="space-y-1">
+                {Object.entries(formErrors).map(([field, message]) => (
+                  <div key={field} className="text-sm text-destructive">
+                    {field === 'general' ? message : `${field}: ${message}`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end">
             <Button 

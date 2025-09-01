@@ -224,6 +224,24 @@ export const insertShippingInstructionSchema = createInsertSchema(shippingInstru
   id: true,
   createdAt: true,
   completedAt: true,
+}).extend({
+  // Accept flexible date formats and coerce to proper types
+  requestedDate: z.union([
+    z.string().datetime({ offset: true }),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    z.date()
+  ]).optional().nullable().transform((val) => {
+    if (!val) return null;
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
+  // Coerce numeric fields
+  productId: z.coerce.number().int().positive(),
+  fromLocationId: z.coerce.number().int().positive(),
+  toLocationId: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().positive(),
 });
 
 export const insertInventoryHistorySchema = createInsertSchema(inventoryHistory).omit({

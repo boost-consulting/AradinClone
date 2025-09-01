@@ -1,0 +1,122 @@
+※お願い：全項目を実装し、最後の「受け入れ確認」をすべて合格してから完了報告をお願いします。部分対応の中間報告は不要です。代替案がある場合も、全体整合が取れる形で提示し、受け入れ確認を全合格させてください。
+
+指示：出荷指示作成が 400（Validation error）で失敗する件の完全修正
+症状（共有）
+
+出荷指示作成時に 400: Validation error。エラーメッセージに
+requestedDate: Expected date, received string（または同等）が出て作成できない。
+
+原因（推定一致）
+
+サーバのバリデーション（Zod）が requestedDate を Date型で要求している一方、フロントからは 文字列（例：2025/09/03） を送っている。
+
+量・IDも文字列のまま送られるパスがあり、型不一致の副次的エラーを誘発。
+
+修正方針（サーバ／フロント双方で“受け入れやすい形”に統一）
+1) サーバ：出荷指示作成APIのバリデーションを“受け入れ拡張＋正規化”
+
+対象：POST /api/shipping/requests（出荷指示作成） など該当エンドポイント
+
+requestedDate は 以下のいずれかを受け入れる：
+
+ISO 日付文字列（YYYY-MM-DD もしくは YYYY-MM-DDTHH:mm:ss.sssZ）
+
+Date オブジェクト
+
+未指定（null/undefined）（任意）
+
+バリデーション例（実装は任意の方法で可）
+
+z.union([z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)), z.date()]).optional().nullable()
+
+受け取った値を正規化して1つの形式に揃える：
+
+DBが DATE 型なら YYYY-MM-DD にトリム（ローカルTZで日付のみ／時間は持たせない）。
+
+DBが timestamp なら ローカルの 00:00:00 に丸める（Asia/Tokyo を想定）。
+
+そのほかのフィールドはサーバ側で強制的に型合わせ：
+
+storeId, skuId：z.string().min(1)（数値IDなら z.coerce.number().int().positive()）
+
+quantity：z.coerce.number().int().positive()
+
+note：z.string().max(2000).optional().nullable()
+
+正常化後の保存前にビジネス検証：数量 > 0、SKU/店舗の存在、重複作成の許容条件などをチェック。
+
+レスポンスは保存された正規化値（requestedDate: "YYYY-MM-DD" 等）を返す。
+
+2) フロント：フォーム送信時の“型・フォーマット”を固定
+
+対象：出荷指示作成フォーム（出荷指示ページ）
+
+日付入力は <input type="date"> もしくは日付ピッカーの出力を YYYY-MM-DD に統一。
+
+UIでスラッシュ（YYYY/MM/DD）を表示しても良いが、送信値は YYYY-MM-DD に変換する。
+
+未入力許容の場合は null を送る（空文字は送らない）。
+
+送信ペイロードは型を確定してから送る：
+
+{
+  storeId: String(storeId),     // 文字列に統一
+  skuId: String(skuId),         // 文字列に統一
+  quantity: Number(quantity),   // 整数 > 0
+  requestedDate: requestedDate ?? null, // YYYY-MM-DD or null
+  note: note ?? null
+}
+
+
+送信前にクライアント側でも軽バリデーション：
+
+店舗・SKU選択済み、数量は正整数、requestedDate は YYYY-MM-DD 形式または未指定。
+
+失敗時はフォーム下にエラーメッセージを表示してAPIを叩かない。
+
+作成成功後：未処理出荷指示リスト／通知バッジ／ダッシュボードKPIを再取得。フォームはクリア。
+
+3) エラーハンドリングの改善（開発・運用性）
+
+サーバの 400 応答は、{ message: "Validation error", errors: [{ path, code, expected, received, message }] } を返しているはず。
+フロントで最初の1件をフォーム項目にひも付けて表示（例：requestedDate の下に「日付は YYYY-MM-DD で入力してください」）。
+
+コンソールの赤エラーではなく、画面内のフィールドエラーでユーザーに伝える。
+
+受け入れ確認（必ず通してから完了報告）
+
+日付ありで作成
+
+店舗=店舗1 / SKU=自動選択 / 数量=4 / requestedDate=今日（YYYY-MM-DD） で成功。
+
+未処理出荷指示に1件追加、通知バッジ・ダッシュボードKPIが増加。
+
+日付なしで作成
+
+requestedDate 未入力で成功（サーバは null 受理）。
+
+登録後の詳細表示で requestedDate が 空（null） として保持される。
+
+不正な日付文字列の拒否
+
+requestedDate="2025/09/03"（スラッシュ）でクライアント側バリデーションがブロック。
+
+無理に送ってもサーバ側が 400 を返し、フィールド下にエラー表示される。
+
+型不一致の再発防止
+
+quantity="4" のような文字列でも、サーバが z.coerce.number().int().positive() で受理（4として保存）。
+
+storeId, skuId は文字列で統一（API・DBの実型と整合）。
+
+回帰確認
+
+作成した出荷指示を**倉庫で「出荷確定」**できる（倉庫↓／店舗↑／完了／履歴1行）。
+
+ダッシュボード・通知が即時反映される。
+
+備考（運用を安定させる小メモ）
+
+DB列が DATE の場合は UTC/タイムゾーンのズレに注意。保存は YYYY-MM-DD の文字列にしてドライバ任せにしないのが安全。
+
+既存データで requestedDate が空文字の行があれば、NULL に移行しておくとよい。
