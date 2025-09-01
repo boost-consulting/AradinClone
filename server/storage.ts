@@ -214,7 +214,7 @@ export class DatabaseStorage implements IStorage {
     productId: number, 
     locationId: number, 
     fromState: InventoryState | null, 
-    toState: InventoryState, 
+    toState: InventoryState | null, 
     quantity: number, 
     operationType: OperationType, 
     performedBy: string, 
@@ -231,10 +231,12 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Add to target state
-    const toBalance = await this.getInventoryBalance(productId, locationId, toState);
-    const newQuantity = (toBalance?.quantity || 0) + quantity;
-    await this.updateInventoryBalance(productId, locationId, toState, newQuantity);
+    // Add to target state (only if toState is specified)
+    if (toState) {
+      const toBalance = await this.getInventoryBalance(productId, locationId, toState);
+      const newQuantity = (toBalance?.quantity || 0) + quantity;
+      await this.updateInventoryBalance(productId, locationId, toState, newQuantity);
+    }
 
     // Create history entry
     await this.createHistoryEntry({

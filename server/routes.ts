@@ -284,8 +284,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data.productId,
         data.locationId,
         '通常',
-        '通常',
-        -data.quantity, // Negative for reduction
+        null, // No toState for sales - only reduce from normal inventory
+        data.quantity, // Positive quantity for reduction
         '販売',
         performedBy,
         data.memo,
@@ -398,12 +398,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Seed data
   app.post("/api/seed", async (req, res) => {
     try {
-      // Get existing warehouse and store users
-      const warehouseUser = await db.select().from(users).where(eq(users.role, 'warehouse')).limit(1);
-      const storeUser = await db.select().from(users).where(eq(users.role, 'store')).limit(1);
+      // Create demo users if they don't exist
+      let warehouseUser = await db.select().from(users).where(eq(users.role, 'warehouse')).limit(1);
+      let storeUser = await db.select().from(users).where(eq(users.role, 'store')).limit(1);
       
-      if (warehouseUser.length === 0 || storeUser.length === 0) {
-        return res.status(400).json({ message: "Required warehouse and store users not found. Please ensure users are created first." });
+      if (warehouseUser.length === 0) {
+        await db.insert(users).values({
+          id: 'warehouse_user',
+          username: 'warehouse_user',
+          password: 'password',
+          role: 'warehouse',
+          storeId: null
+        }).onConflictDoNothing();
+        warehouseUser = await db.select().from(users).where(eq(users.id, 'warehouse_user')).limit(1);
+      }
+      
+      if (storeUser.length === 0) {
+        await db.insert(users).values({
+          id: 'store_user',
+          username: 'store_user',
+          password: 'password',
+          role: 'store',
+          storeId: null
+        }).onConflictDoNothing();
+        storeUser = await db.select().from(users).where(eq(users.id, 'store_user')).limit(1);
       }
 
       const warehouseUserId = warehouseUser[0].id;
@@ -522,14 +540,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create history entries using actual user IDs
       const historyData = [
-        { operationType: '仕入受入', productId: createdProducts[0].id, locationId: 1, quantity: 5, performedBy: warehouseUserId },
-        { operationType: '棚入れ', productId: createdProducts[0].id, fromLocationId: 1, toLocationId: 1, quantity: 5, state: '通常', performedBy: warehouseUserId },
-        { operationType: '棚入れ', productId: createdProducts[1].id, fromLocationId: 2, toLocationId: 2, quantity: 3, state: '通常', performedBy: warehouseUserId },
-        { operationType: '販売', productId: createdProducts[2].id, locationId: 4, quantity: 1, amount: 2980, performedBy: storeUserId },
-        { operationType: '販売', productId: createdProducts[3].id, locationId: 5, quantity: 2, amount: 5960, performedBy: storeUserId },
-        { operationType: '販売', productId: createdProducts[4].id, locationId: 6, quantity: 1, amount: 4980, performedBy: storeUserId },
-        { operationType: '顧客返品', productId: createdProducts[2].id, locationId: 4, quantity: 1, performedBy: storeUserId },
-        { operationType: '在庫確保', productId: createdProducts[5].id, fromLocationId: 1, toLocationId: 1, quantity: 2, state: '確保', performedBy: warehouseUserId },
+        { operationType: '仕入受入' as const, productId: createdProducts[0].id, locationId: 1, quantity: 5, performedBy: warehouseUserId },
+        { operationType: '棚入れ' as const, productId: createdProducts[0].id, fromLocationId: 1, toLocationId: 1, quantity: 5, state: '通常' as const, performedBy: warehouseUserId },
+        { operationType: '棚入れ' as const, productId: createdProducts[1].id, fromLocationId: 2, toLocationId: 2, quantity: 3, state: '通常' as const, performedBy: warehouseUserId },
+        { operationType: '販売' as const, productId: createdProducts[2].id, locationId: 4, quantity: 1, amount: 2980, performedBy: storeUserId },
+        { operationType: '販売' as const, productId: createdProducts[3].id, locationId: 5, quantity: 2, amount: 5960, performedBy: storeUserId },
+        { operationType: '販売' as const, productId: createdProducts[4].id, locationId: 6, quantity: 1, amount: 4980, performedBy: storeUserId },
+        { operationType: '顧客返品' as const, productId: createdProducts[2].id, locationId: 4, quantity: 1, performedBy: storeUserId },
+        { operationType: '在庫確保' as const, productId: createdProducts[5].id, fromLocationId: 1, toLocationId: 1, quantity: 2, state: '確保' as const, performedBy: warehouseUserId },
       ];
 
       await db.insert(inventoryHistory).values(historyData).onConflictDoNothing();

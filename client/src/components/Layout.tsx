@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Search, Bell, HelpCircle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +13,14 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
+
+  // Fetch pending shipments count for notification badge
+  const { data: pendingShipments } = useQuery<any[]>({
+    queryKey: ["/api/shipping/pending"],
+    refetchInterval: 30000,
+  });
+
+  const pendingShipmentsCount = pendingShipments?.length || 0;
 
   const navigationTabs = [
     { href: "/", label: "ダッシュボード" },
@@ -70,9 +79,11 @@ export function Layout({ children }: LayoutProps) {
             <div className="relative">
               <Button variant="ghost" size="icon" data-testid="button-notifications">
                 <Bell className="h-4 w-4" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                  7
-                </Badge>
+                {pendingShipmentsCount > 0 && (
+                  <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
+                    {pendingShipmentsCount}
+                  </Badge>
+                )}
               </Button>
             </div>
             

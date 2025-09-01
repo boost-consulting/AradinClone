@@ -35,8 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: authData.role,
         storeId: authData.storeId,
       });
+    } else if (!isLoading && !authData) {
+      // Auto-login for demo purposes
+      login('store_user', 'password').catch(() => {
+        // If store_user login fails, try warehouse_user
+        login('warehouse_user', 'password').catch(console.error);
+      });
     }
-  }, [authData]);
+  }, [authData, isLoading]);
 
   const loginMutation = useMutation({
     mutationFn: async ({ username, password }: { username: string; password: string }) => {

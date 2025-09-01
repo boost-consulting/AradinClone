@@ -23,8 +23,16 @@ export function HistorySidebar() {
         return 'text-orange-500';
       case '出荷指示作成':
         return 'text-blue-600';
-      case '棚入れ確定':
+      case '棚入れ':
         return 'text-purple-600';
+      case '在庫確保':
+        return 'text-cyan-600';
+      case '店舗返品送付':
+        return 'text-yellow-600';
+      case '返品受入':
+        return 'text-red-600';
+      case '返品検品':
+        return 'text-pink-600';
       default:
         return 'text-muted-foreground';
     }
