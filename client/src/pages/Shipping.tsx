@@ -156,16 +156,17 @@ export default function Shipping() {
       alert.location.id.toString() === selectedStore
     ) || [];
 
-  // Filter pending shipments for current store
+  // Filter pending shipments for current store (status = 'pending')
   const storePendingShipments = selectedStore === "all" ? [] : 
-    pendingShipments?.filter(shipment =>
-      shipment.toLocation.name === currentStore?.name
+    completedShipments?.filter(shipment =>
+      shipment.toLocation.name === currentStore?.name && shipment.status === 'pending'
     ) || [];
 
-  // Filter completed shipments for current store (recent 20)
+  // Filter confirmed/completed shipments for current store (status = 'confirmed' or 'completed')
   const storeCompletedShipments = selectedStore === "all" ? [] : 
     completedShipments?.filter(shipment =>
-      shipment.toLocation.name === currentStore?.name && shipment.status === 'completed'
+      shipment.toLocation.name === currentStore?.name && 
+      (shipment.status === 'confirmed' || shipment.status === 'completed')
     ).slice(0, 20) || [];
 
   const handleCreateShipping = async () => {
@@ -288,7 +289,12 @@ export default function Shipping() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              <span>少数アラート（{currentStore?.name}）</span>
+              <span>少数アラート（{selectedStore === "all" ? "全店舗" : currentStore?.name}）</span>
+              {selectedStore !== "all" && (
+                <span className="ml-2 bg-destructive/10 text-destructive px-2 py-1 rounded text-xs font-normal">
+                  {storeAlerts.length}件
+                </span>
+              )}
             </CardTitle>
             <CardDescription>下限在庫を下回った商品</CardDescription>
           </CardHeader>
@@ -337,9 +343,9 @@ export default function Shipping() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Package className="h-5 w-5 text-accent" />
-              <span>未処理出荷指示</span>
+              <span>処理中の出荷指示</span>
             </CardTitle>
-            <CardDescription>受付中の出荷指示</CardDescription>
+            <CardDescription>倉庫で処理待ちの出荷指示</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -381,8 +387,8 @@ export default function Shipping() {
               ) : (
                 <div className="flex flex-col items-center py-6 text-muted-foreground" data-testid="empty-pending-shipments">
                   <Package className="h-8 w-8 text-muted-foreground/30 mb-3" />
-                  <h4 className="font-medium mb-1">未処理の指示はありません</h4>
-                  <p className="text-xs text-center">新しい出荷指示が作成されると表示されます</p>
+                  <h4 className="font-medium mb-1">処理中の指示はありません</h4>
+                  <p className="text-xs text-center">出荷指示が作成されると倉庫での処理待ちとして表示されます</p>
                 </div>
               )}
             </div>
@@ -392,8 +398,8 @@ export default function Shipping() {
         {/* Completed Shipments */}
         <Card>
           <CardHeader>
-            <CardTitle>完了済み出荷指示</CardTitle>
-            <CardDescription>最近完了した出荷指示（20件）</CardDescription>
+            <CardTitle>出荷済み</CardTitle>
+            <CardDescription>出荷処理が完了した指示（20件）</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -414,7 +420,7 @@ export default function Shipping() {
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground text-center">完了済みの指示はありません</p>
+                <p className="text-muted-foreground text-center">出荷済みの指示はありません</p>
               )}
             </div>
           </CardContent>
