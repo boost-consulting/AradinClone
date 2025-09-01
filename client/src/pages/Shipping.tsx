@@ -197,10 +197,8 @@ export default function Shipping() {
         fromLocationId: warehouseLocation.id,
         toLocationId: currentStore.id,
         quantity: parseInt(shippingForm.quantity),
-        status: "pending",
         requestedDate: formattedRequestedDate,
         memo: shippingForm.memo,
-        createdBy: user?.id,
       });
     } catch (error) {
       console.error("Shipping creation error:", error);
