@@ -74,6 +74,10 @@ export interface IStorage {
   autoReplenishInventory(date: string, performedBy: string): Promise<{ createdPlans: number; message: string }>;
   getBelowMinStockProducts(): Promise<(Product & { currentStock: number; minStock: number; location: Location })[]>;
 
+  // Unified inbound summary methods
+  getTodayInboundPlansSummary(): Promise<{ total: number; processed: number; pending: number }>;
+  getInboundPlansForDateRange(startDate: string, endDate: string, includeOverdue?: boolean): Promise<(InboundPlan & { product: Product; creator: User; remainingQty: number })[]>;
+
   // History methods
   getInventoryHistory(limit?: number): Promise<(InventoryHistory & { product: Product; fromLocation?: Location; toLocation?: Location; performer: User })[]>;
   getInventoryHistoryByProduct(productId: number, locationId?: number): Promise<(InventoryHistory & { fromLocation?: Location; toLocation?: Location; performer: User })[]>;
@@ -509,6 +513,13 @@ export class DatabaseStorage implements IStorage {
       referenceId: id.toString(),
       performedBy,
     });
+
+    // Auto-replenish after shipment confirmation
+    try {
+      await this.autoReplenishInventory('today', performedBy);
+    } catch (replenishError) {
+      console.warn('Auto-replenish failed after shipment:', replenishError);
+    }
   }
 
   // Inbound plan methods
@@ -1048,6 +1059,103 @@ export class DatabaseStorage implements IStorage {
     }
 
     return belowMinProducts;
+  }
+
+  // Unified inbound summary - single source of truth for dashboard and panels
+  async getTodayInboundPlansSummary(): Promise<{ total: number; processed: number; pending: number }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Common WHERE clause for today's inbound plans
+    const todayPlansQuery = db
+      .select({
+        status: inboundPlans.status,
+        count: sql<number>`count(*)`
+      })
+      .from(inboundPlans)
+      .where(and(
+        gte(sql`date(${inboundPlans.dueDate})`, today.toISOString().split('T')[0]),
+        lt(sql`date(${inboundPlans.dueDate})`, tomorrow.toISOString().split('T')[0])
+      ))
+      .groupBy(inboundPlans.status);
+
+    const results = await todayPlansQuery;
+    
+    let total = 0;
+    let processed = 0;
+    let pending = 0;
+
+    results.forEach(row => {
+      total += row.count;
+      if (row.status === 'completed') {
+        processed += row.count;
+      } else if (row.status === 'pending' || row.status === 'partially_received') {
+        pending += row.count;
+      }
+    });
+
+    return { total, processed, pending };
+  }
+
+  async getInboundPlansForDateRange(
+    startDate: string, 
+    endDate: string, 
+    includeOverdue: boolean = false
+  ): Promise<(InboundPlan & { product: Product; creator: User; remainingQty: number })[]> {
+    let query = db
+      .select({
+        inboundPlan: inboundPlans,
+        product: products,
+        creator: users,
+      })
+      .from(inboundPlans)
+      .leftJoin(products, eq(inboundPlans.productId, products.id))
+      .leftJoin(users, eq(inboundPlans.createdBy, users.id))
+      .where(and(
+        or(
+          eq(inboundPlans.status, 'pending'),
+          eq(inboundPlans.status, 'partially_received')
+        ),
+        gte(sql`date(${inboundPlans.dueDate})`, startDate),
+        lte(sql`date(${inboundPlans.dueDate})`, endDate)
+      ));
+
+    if (includeOverdue) {
+      // Include overdue items regardless of date range
+      query = db
+        .select({
+          inboundPlan: inboundPlans,
+          product: products,
+          creator: users,
+        })
+        .from(inboundPlans)
+        .leftJoin(products, eq(inboundPlans.productId, products.id))
+        .leftJoin(users, eq(inboundPlans.createdBy, users.id))
+        .where(and(
+          or(
+            eq(inboundPlans.status, 'pending'),
+            eq(inboundPlans.status, 'partially_received')
+          ),
+          or(
+            and(
+              gte(sql`date(${inboundPlans.dueDate})`, startDate),
+              lte(sql`date(${inboundPlans.dueDate})`, endDate)
+            ),
+            lt(sql`date(${inboundPlans.dueDate})`, startDate) // overdue items
+          )
+        ));
+    }
+
+    const results = await query.orderBy(asc(inboundPlans.dueDate));
+    
+    return results.map(row => ({
+      ...row.inboundPlan,
+      product: row.product!,
+      creator: row.creator!,
+      remainingQty: row.inboundPlan.plannedQty - row.inboundPlan.receivedQty
+    }));
   }
 
 }

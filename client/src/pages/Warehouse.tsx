@@ -30,10 +30,10 @@ function AutoReplenishButton() {
     mutationFn: async () => {
       return apiRequest("POST", "/api/inbounds/replenish", { date: 'today' });
     },
-    onSuccess: (result) => {
+    onSuccess: (result: any) => {
       toast({
         title: "自動補充完了",
-        description: result.message,
+        description: result?.message || "自動補充が完了しました",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/inbounds/pending"] });
     },
@@ -288,6 +288,20 @@ function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const { canPerform } = useWorkMode();
+
+  // Listen for dashboard navigation event to set today filter
+  useState(() => {
+    const handleSetRange = (event: CustomEvent) => {
+      if (event.detail === 'today') {
+        setFilter('today');
+      }
+    };
+
+    window.addEventListener('warehouse:setInboundRange', handleSetRange as EventListener);
+    return () => {
+      window.removeEventListener('warehouse:setInboundRange', handleSetRange as EventListener);
+    };
+  });
   
   const { data: inboundData, isLoading } = useQuery({
     queryKey: ["/api/inbounds/pending", { 
@@ -300,7 +314,7 @@ function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
     refetchInterval: 30000,
   });
 
-  const pendingInbounds = inboundData?.items || [];
+  const pendingInbounds = (inboundData as any)?.items || [];
 
   // Server-side filtering eliminates the need for client-side filtering
   const filteredInbounds = pendingInbounds;

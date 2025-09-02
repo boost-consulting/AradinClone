@@ -79,6 +79,59 @@ const loginSchema = z.object({
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
+  // Session switch API for work mode changes
+  app.post("/api/auth/switch", requireAuth, async (req, res) => {
+    try {
+      const { mode, storeId } = req.body;
+      
+      if (!mode || !['warehouse', 'store'].includes(mode)) {
+        return res.status(400).json({ message: "Invalid mode. Must be 'warehouse' or 'store'" });
+      }
+
+      if (mode === 'store' && !storeId) {
+        return res.status(400).json({ message: "storeId is required for store mode" });
+      }
+
+      // Get current user to verify permissions
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Update session with new role and storeId
+      if (mode === 'warehouse') {
+        // Only allow switching to warehouse if user has warehouse role
+        if (currentUser.role !== 'warehouse' && currentUser.role !== 'admin') {
+          return res.status(403).json({ message: "Not authorized for warehouse mode" });
+        }
+        req.session.role = 'warehouse';
+        req.session.storeId = undefined;
+      } else {
+        // For store mode, verify the user has access to the specified store
+        if (currentUser.role === 'store' && currentUser.storeId !== storeId) {
+          return res.status(403).json({ message: "Not authorized for this store" });
+        }
+        req.session.role = currentUser.role; // Preserve original role
+        req.session.storeId = storeId;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      res.json({ 
+        role: req.session.role, 
+        storeId: req.session.storeId 
+      });
+    } catch (error) {
+      console.error('Session switch error:', error);
+      res.status(500).json({ message: "Failed to switch session mode" });
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = loginSchema.parse(req.body);
@@ -163,10 +216,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard metrics
+  // Dashboard today inbound summary endpoint
+  app.get("/api/dashboard/inbound-summary", requireAuth, async (req, res) => {
+    try {
+      const summary = await storage.getTodayInboundPlansSummary();
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch inbound summary" });
+    }
+  });
+
   app.get("/api/dashboard/metrics", async (req, res) => {
     try {
-      const metrics = await storage.getDashboardMetrics();
-      res.json(metrics);
+      const [metrics, inboundSummary] = await Promise.all([
+        storage.getDashboardMetrics(),
+        storage.getTodayInboundPlansSummary()
+      ]);
+      
+      res.json({
+        ...metrics,
+        todayReceiving: {
+          processed: inboundSummary.processed,
+          planned: inboundSummary.pending
+        }
+      });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch dashboard metrics" });
     }
@@ -281,19 +354,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/inbounds/pending", requireAuth, async (req, res) => {
     try {
-      const { range = 'all', include_overdue = 'false', q = '', limit = 50, offset = 0 } = req.query;
+      const { range = 'all', include_overdue = 'false', q, limit, offset } = req.query;
       
-      const filters = {
-        range: range as string,
-        includeOverdue: include_overdue === 'true',
-        searchQuery: q as string,
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string)
-      };
+      let startDate: string, endDate: string;
+      const today = new Date();
       
-      const result = await storage.getPendingInboundPlans(filters);
-      res.json(result);
+      switch (range) {
+        case 'today':
+          startDate = today.toISOString().split('T')[0];
+          endDate = today.toISOString().split('T')[0];
+          break;
+        case '7d':
+          const sevenDaysAgo = new Date(today);
+          sevenDaysAgo.setDate(today.getDate() - 7);
+          startDate = sevenDaysAgo.toISOString().split('T')[0];
+          endDate = today.toISOString().split('T')[0];
+          break;
+        case 'all':
+        default:
+          const farPast = new Date('2020-01-01');
+          const farFuture = new Date();
+          farFuture.setFullYear(farFuture.getFullYear() + 1);
+          startDate = farPast.toISOString().split('T')[0];
+          endDate = farFuture.toISOString().split('T')[0];
+          break;
+      }
+      
+      let items = await storage.getInboundPlansForDateRange(
+        startDate, 
+        endDate, 
+        include_overdue === 'true'
+      );
+
+      // Apply search filter if provided
+      if (q && typeof q === 'string') {
+        const searchTerm = q.toLowerCase();
+        items = items.filter(item => 
+          item.product.sku.toLowerCase().includes(searchTerm) ||
+          item.product.name.toLowerCase().includes(searchTerm) ||
+          item.supplier.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      const total = items.length;
+      
+      // Apply pagination
+      if (limit && offset) {
+        const limitNum = parseInt(limit as string);
+        const offsetNum = parseInt(offset as string);
+        items = items.slice(offsetNum, offsetNum + limitNum);
+      }
+
+      // Format response data
+      const formattedItems = items.map(item => ({
+        id: item.id,
+        sku: item.product.sku,
+        productName: item.product.name,
+        supplier: item.supplier,
+        dueDate: item.dueDate,
+        plannedQty: item.plannedQty,
+        receivedQty: item.receivedQty,
+        remainingQty: item.remainingQty,
+        status: item.status
+      }));
+
+      res.json({ total, items: formattedItems });
     } catch (error) {
+      console.error('Failed to fetch pending inbound plans:', error);
       res.status(500).json({ message: "Failed to fetch pending inbound plans" });
     }
   });

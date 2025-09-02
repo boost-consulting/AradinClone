@@ -40,7 +40,13 @@ export default function Dashboard() {
 
   // Navigation handlers
   const handlePendingShipmentsClick = () => setLocation('/warehouse');
-  const handleReceivingClick = () => setLocation('/warehouse');
+  const handleReceivingClick = () => {
+    setLocation('/warehouse');
+    // Force today range in warehouse panel after navigation  
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('warehouse:setInboundRange', { detail: 'today' }));
+    }, 100);
+  };
   const handleLowStockClick = () => setLocation('/shipping');
   const handleSalesClick = () => setLocation('/sales');
   const handleQuickReceiving = () => setLocation('/warehouse');

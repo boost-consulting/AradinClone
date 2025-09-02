@@ -47,15 +47,43 @@ export function WorkModeProvider({ children }: WorkModeProviderProps) {
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  const setWorkMode = (mode: WorkMode) => {
-    setWorkModeState(mode);
-    localStorage.setItem('workMode', JSON.stringify(mode));
-    
-    // Invalidate relevant queries when work mode changes
-    queryClient.invalidateQueries({ queryKey: ['/api/shipping/pending'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/inbounds/pending'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/inventory'] });
+  const setWorkMode = async (mode: WorkMode) => {
+    try {
+      // Call server-side session switch API with credentials
+      const response = await fetch('/api/auth/switch', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: mode.mode,
+          storeId: mode.storeId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to switch session mode: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      // Update local state after successful server update
+      setWorkModeState(mode);
+      localStorage.setItem('workMode', JSON.stringify(mode));
+      
+      // Invalidate all relevant queries after mode switch
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/shipping/pending'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/inbounds/pending'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/history'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      
+    } catch (error) {
+      console.error('Failed to switch work mode:', error);
+      // Keep local state unchanged if server call fails
+    }
   };
 
   // Auto-set work mode based on user role if not already set

@@ -1,0 +1,156 @@
+お願い：下記の全項目を実装し、いちばん下の受け入れ確認の全テストに実操作で合格してから完了報告してください。部分対応の中間報告は不要です。代替案がある場合も、全体整合が取れる形で提案し、受け入れ確認を全合格させてください。
+
+指示（追加・確定版）
+
+目的
+
+倉庫モードでも出荷処理ができない不具合を根絶（モードと権限の“ねじれ”解消）。
+
+ダッシュボード「本日の仕入受入：処理済/予定」の予定件数と、入出庫画面右パネル「未処理仕入予定」を完全連動。
+
+遷移（ダッシュボード→入出庫）と件数更新（在庫変化→予定生成→右パネル/カード反映）を一貫動作にする。
+
+A. 倉庫モードでも出荷処理できない件（作業モード⇔サーバセッションの不一致を解消）
+A-1. セッション切替APIの導入/確認（必須）
+
+API：POST /api/auth/switch
+
+入力
+
+倉庫へ切替：{ mode: 'warehouse' }
+
+店舗へ切替：{ mode: 'store', storeId: number }
+
+挙動
+
+サーバ側のセッション（もしくは署名付きクッキー）に role と storeId を保存/上書きする。
+
+切替後、現在のセッションユーザーが持つ権限は role に完全準拠する（requireRole() はこのセッションの role を見る）。
+
+返却：{ role, storeId }
+
+注意：フロントからのfetchは必ず credentials: 'include' を付け、セッションCookieを往復させる。CORSがある場合は sameSite: 'lax' / secure: true 等の設定を合わせる。
+
+A-2. フロントのモード切替処理の統一
+
+WorkModeProvider（名称は任意）で以下を必ず実行：
+
+ヘッダーの「作業モード」選択時に /api/auth/switch を呼ぶ。
+
+成功後に react-query のキーを invalidate：
+['/api/dashboard'], ['/api/shipping/pending'], ['/api/inbounds/pending'], ['/api/inventory'], 通知, 右サイド履歴。
+
+画面のボタン活性は workMode.mode を唯一の真実として判定（auth.role は参照しない）。
+
+const ability =
+  workMode.mode==='warehouse'
+    ? getAbilities('WAREHOUSE')
+    : getAbilities('STORE');
+
+
+入出庫上段左パネルの「出荷処理」ボタンの disabled は上の ability で判定し、倉庫モードなら活性にする。
+
+サーバ側のガードは従来どおり（倉庫以外からの POST /shipping/confirm は403）。
+
+B. 仕入受入の「母数」と右パネルを完全連動させる
+B-1. 集計の単一ソース化
+
+サーバに getTodayInboundPlansSummary() を用意し、以下のWHERE句を共通関数として切り出す：
+
+inbound_plans.status IN ('pending','partially_received')
+
+inbound_plans.due_date = 今日（タイムゾーンはアプリ既定、例：Asia/Tokyo）
+
+ダッシュボードカード（予定件数）と、入出庫右パネルの GET /api/inbounds/pending?range=today は必ずこの共通関数を使う。
+
+右パネルの range=all|7d|today などの切替もこの関数をベースにした拡張で実装。
+
+B-2. 右パネルのAPI仕様を明確化
+
+GET /api/inbounds/pending
+
+クエリ：range=today|7d|all、include_overdue=true|false、q、limit、offset
+
+返却：{ total, items:[{ id, sku, productName, supplier, dueDate, plannedQty, receivedQty, remainingQty, status }] }
+
+**既定（ダッシュボードからの遷移時）**は range=today。この件数がカードの“予定数”と一致すること。
+
+B-3. ダッシュボード→入出庫への遷移
+
+カード「本日の仕入受入（処理済/予定）」クリック → 入出庫へ遷移し、右パネルを range=today で表示。
+
+遷移時に 右パネルを強制再fetch する（キャッシュを使わない）。
+
+C. 在庫変化→自動補充予定→カード/右パネル更新（デモ導線の固定）
+C-1. 自動補充API（実装/確認）
+
+POST /api/inbounds/replenish?date=today
+
+倉庫の通常在庫が replenishment_criteria.target を下回る SKU に対して、
+既に pending/partially_received の inbound_plans が存在しない場合に限り、当日締切の inbound_plans を作成。
+
+planned_qty = max(0, target - current_stock)、supplier='デフォルト仕入先'、status='pending'。
+
+C-2. トリガ（自動呼出）
+
+以下の書込み系成功直後に、必ず replenish を呼ぶ → ['/api/inbounds/pending'] と ['/api/dashboard'] を invalidate：
+
+倉庫の出荷確定
+
+販売（倉庫在庫を減らす設計であれば）
+
+返品受入・検品確定（在庫増で不要ならスキップ可）
+
+C-3. 右パネルの手動ボタン（任意。倉庫モードのみ）
+
+「不足分の仕入予定を自動作成」ボタンで replenish を明示的に実行可能。実行後は右パネルとダッシュボードを再fetch。
+
+D. 少数アラート⇔処理中の出荷指示の排他（再確認）
+
+shipping/shortage のSQL/ロジックで、SKU×店舗に pending の出荷指示が1件でもあれば少数アラートに出さない。
+
+出荷指示作成直後は、少数アラートから消え、左パネル「処理中」に即座に移動する（再fetch or 楽観更新+再fetch）。
+
+E. 受け入れ確認（全テスト合格で完了）
+
+倉庫モードの実処理
+
+ヘッダーで「倉庫」を選択 → 内部で POST /api/auth/switch が走り、セッションの role='WAREHOUSE' に変更。
+
+入出庫上段左の「出荷処理」ボタンが活性。クリックで下段**[出荷処理]**タブにプリセット → 確定成功（403なし）。
+
+店舗モードでは同ボタンが非活性＋鍵アイコン。
+
+ダッシュボードの“本日の仕入受入（処理済/予定）”と右パネルが一致
+
+ダッシュボードの予定件数と、入出庫右パネル（range=today）の**total**が一致。
+
+カードクリックで入出庫へ遷移すると、右パネルに同じリストが表示される。
+
+在庫減少→予定が自動生成→反映
+
+倉庫で出荷確定等を行うと、/api/inbounds/replenish が走り、右パネルとダッシュボード予定件数が増加（再fetch済）。
+
+受入処理の一貫動作
+
+右パネル行→下段**[仕入受入]にプリセット→登録で通常/不良加算**、received_qty 更新。残量0でcompleted→右パネルから消える。
+
+ダッシュボードの処理済が増え、予定が減る。履歴に1行追加。
+
+排他ルール
+
+pending が存在するSKU×店舗は少数アラートに出ない。
+
+出荷確定で不足が解消すれば、少数アラートは表示されない。
+
+モード切替の完全反映
+
+作業モード切替後、上段2パネル／下段タブ／ダッシュボード／通知／履歴がすべて再fetchされ、活性/非活性が正しく切り替わる。
+
+補足（実装を軽くする工夫）
+
+fetch('/api/auth/switch', { method:'POST', credentials:'include', ... }) を必ず徹底。
+
+ダッシュボードと右パネルの件数差が出た場合は、共通関数のWHERE句が両方から使われているかをまず確認する。
+
+react-query のキーに mode / storeId / range を含めると、モード切替や日付レンジ変更での再取得漏れがなくなる。
