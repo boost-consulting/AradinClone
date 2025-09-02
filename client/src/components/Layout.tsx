@@ -1,12 +1,14 @@
 import { Link, useLocation } from "wouter";
-import { Search, Bell, HelpCircle, Package, ArrowRight } from "lucide-react";
+import { Search, Bell, HelpCircle, Package, ArrowRight, Settings, Lock } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HistorySidebar } from "./HistorySidebar";
+import { useWorkMode, getWorkModeBadgeColor, getWorkModeDisplayName } from "@/lib/workMode";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -14,6 +16,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
+  const { workMode, setWorkMode, canPerform } = useWorkMode();
 
   // Fetch pending shipments count for notification badge
   const { data: pendingShipments } = useQuery<any[]>({
@@ -199,25 +202,47 @@ export function Layout({ children }: LayoutProps) {
               </DropdownMenuContent>
             </DropdownMenu>
             
-            {/* User Info and Store Selection */}
-            <div className="flex items-center space-x-3">
-              <div className="text-right">
-                <div className="text-sm font-medium">倉庫ユーザー</div>
-                <div className="text-xs text-muted-foreground">管理者</div>
-              </div>
-              <Select defaultValue={storeOptions[0]?.name || "店舗1"}>
-                <SelectTrigger className="w-32" data-testid="select-store">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {storeOptions.map((store: any) => (
-                    <SelectItem key={store.id} value={store.name}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Work Mode Badge and Switcher */}
+            <Badge 
+              className={`px-3 py-1 ${getWorkModeBadgeColor(workMode.mode)}`}
+              data-testid="badge-work-mode"
+            >
+              作業モード: {getWorkModeDisplayName(workMode)}
+            </Badge>
+            
+            {/* Work Mode Switcher */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" data-testid="button-work-mode">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <div className="p-2 border-b border-border">
+                  <h4 className="font-semibold text-sm">作業モード切替</h4>
+                </div>
+                <DropdownMenuItem 
+                  onClick={() => setWorkMode({ mode: 'warehouse' })}
+                  className={workMode.mode === 'warehouse' ? 'bg-accent' : ''}
+                >
+                  倉庫モード
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {storeOptions.map((store: any) => (
+                  <DropdownMenuItem
+                    key={store.id}
+                    onClick={() => setWorkMode({ 
+                      mode: 'store', 
+                      storeId: store.id, 
+                      storeName: store.name 
+                    })}
+                    className={workMode.mode === 'store' && workMode.storeId === store.id ? 'bg-accent' : ''}
+                  >
+                    {store.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             
             {/* Help */}
             <Button variant="ghost" size="icon" data-testid="button-help">

@@ -6,8 +6,9 @@ import { seedDatabase, resetAndReseed } from "./seed";
 import { 
   insertProductSchema, insertLocationSchema, insertShippingInstructionSchema,
   insertReplenishmentCriteriaSchema, insertInventoryHistorySchema, insertUserSchema,
+  insertInboundPlanSchema,
   users, locations, products, inventoryBalances, replenishmentCriteria, 
-  shippingInstructions, inventoryHistory
+  shippingInstructions, inboundPlans, inventoryHistory
 } from "@shared/schema";
 import { z } from "zod";
 import { sql, eq } from "drizzle-orm";
@@ -227,7 +228,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create shipping instruction
-  app.post("/api/shipping", requireAuth, async (req, res) => {
+  app.post("/api/shipping", requireAuth, requireRole('store'), async (req, res) => {
     try {
       const requestData = { ...req.body, createdBy: req.session.userId };
       const data = insertShippingInstructionSchema.parse(requestData);
@@ -256,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Confirm shipping instruction
-  app.post("/api/shipping/:id/confirm", requireAuth, async (req, res) => {
+  app.post("/api/shipping/:id/confirm", requireAuth, requireRole('warehouse'), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const performedBy = req.session.userId!;
@@ -265,6 +266,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Shipping instruction confirmed" });
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Failed to confirm shipping" });
+    }
+  });
+
+  // Inbound plan routes
+  app.get("/api/inbounds", requireAuth, async (req, res) => {
+    try {
+      const plans = await storage.getInboundPlans();
+      res.json(plans);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch inbound plans" });
+    }
+  });
+
+  app.get("/api/inbounds/pending", requireAuth, async (req, res) => {
+    try {
+      const plans = await storage.getPendingInboundPlans();
+      res.json(plans);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch pending inbound plans" });
+    }
+  });
+
+  app.post("/api/inbounds", requireAuth, requireRole('warehouse'), async (req, res) => {
+    try {
+      const planData = insertInboundPlanSchema.parse(req.body);
+      planData.createdBy = req.session.userId!;
+      
+      const plan = await storage.createInboundPlan(planData);
+      res.json(plan);
+    } catch (error) {
+      console.error('Error creating inbound plan:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors.map(e => ({ path: e.path, message: e.message }))
+        });
+      }
+      const message = error instanceof Error ? error.message : "Failed to create inbound plan";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/inbounds/:id/receive", requireAuth, requireRole('warehouse'), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid inbound plan ID" });
+      }
+
+      const receiveData = z.object({
+        goodQty: z.number().int().min(0),
+        defectQty: z.number().int().min(0),
+        shelfId: z.number().int().positive(),
+        memo: z.string().optional().default("")
+      }).parse(req.body);
+
+      if (receiveData.goodQty + receiveData.defectQty <= 0) {
+        return res.status(400).json({ message: "Total quantity must be greater than 0" });
+      }
+
+      await storage.receiveInboundPlan(
+        id, 
+        receiveData.goodQty, 
+        receiveData.defectQty, 
+        receiveData.shelfId, 
+        receiveData.memo, 
+        req.session.userId!
+      );
+      
+      res.json({ message: "Inbound received successfully" });
+    } catch (error) {
+      console.error('Error receiving inbound:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors.map(e => ({ path: e.path, message: e.message }))
+        });
+      }
+      const message = error instanceof Error ? error.message : "Failed to receive inbound";
+      res.status(500).json({ message });
     }
   });
 

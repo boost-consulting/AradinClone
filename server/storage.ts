@@ -1,10 +1,11 @@
 import { 
   users, locations, products, inventoryBalances, replenishmentCriteria, 
-  shippingInstructions, inventoryHistory,
+  shippingInstructions, inboundPlans, inventoryHistory,
   type User, type InsertUser, type Location, type InsertLocation,
   type Product, type InsertProduct, type InventoryBalance, type InsertInventoryBalance,
   type ReplenishmentCriteria, type InsertReplenishmentCriteria,
   type ShippingInstruction, type InsertShippingInstruction,
+  type InboundPlan, type InsertInboundPlan,
   type InventoryHistory, type InsertInventoryHistory,
   type InventoryState, type OperationType
 } from "@shared/schema";
@@ -51,6 +52,14 @@ export interface IStorage {
   getShippingInstruction(id: number): Promise<(ShippingInstruction & { product: Product; fromLocation: Location; toLocation: Location; creator: User }) | undefined>;
   createShippingInstruction(instruction: InsertShippingInstruction): Promise<ShippingInstruction>;
   confirmShippingInstruction(id: number, performedBy: string): Promise<void>;
+
+  // Inbound plan methods
+  getInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]>;
+  getPendingInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]>;
+  getInboundPlan(id: number): Promise<(InboundPlan & { product: Product; creator: User }) | undefined>;
+  createInboundPlan(plan: InsertInboundPlan): Promise<InboundPlan>;
+  updateInboundPlan(id: number, plan: Partial<InsertInboundPlan>): Promise<InboundPlan>;
+  receiveInboundPlan(planId: number, goodQty: number, defectQty: number, shelfId: number, memo: string, userId: string): Promise<void>;
 
   // History methods
   getInventoryHistory(limit?: number): Promise<(InventoryHistory & { product: Product; fromLocation?: Location; toLocation?: Location; performer: User })[]>;
@@ -486,6 +495,127 @@ export class DatabaseStorage implements IStorage {
       toState: '通常',
       referenceId: id.toString(),
       performedBy,
+    });
+  }
+
+  // Inbound plan methods
+  async getInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]> {
+    return await db
+      .select({
+        inboundPlan: inboundPlans,
+        product: products,
+        creator: users,
+      })
+      .from(inboundPlans)
+      .leftJoin(products, eq(inboundPlans.productId, products.id))
+      .leftJoin(users, eq(inboundPlans.createdBy, users.id))
+      .orderBy(desc(inboundPlans.createdAt))
+      .then(rows => rows.map(row => ({ 
+        ...row.inboundPlan, 
+        product: row.product!,
+        creator: row.creator!
+      })));
+  }
+
+  async getPendingInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]> {
+    return await db
+      .select({
+        inboundPlan: inboundPlans,
+        product: products,
+        creator: users,
+      })
+      .from(inboundPlans)
+      .leftJoin(products, eq(inboundPlans.productId, products.id))
+      .leftJoin(users, eq(inboundPlans.createdBy, users.id))
+      .where(eq(inboundPlans.status, 'pending'))
+      .orderBy(asc(inboundPlans.dueDate))
+      .then(rows => rows.map(row => ({ 
+        ...row.inboundPlan, 
+        product: row.product!,
+        creator: row.creator!
+      })));
+  }
+
+  async getInboundPlan(id: number): Promise<(InboundPlan & { product: Product; creator: User }) | undefined> {
+    const [result] = await db
+      .select({
+        inboundPlan: inboundPlans,
+        product: products,
+        creator: users,
+      })
+      .from(inboundPlans)
+      .leftJoin(products, eq(inboundPlans.productId, products.id))
+      .leftJoin(users, eq(inboundPlans.createdBy, users.id))
+      .where(eq(inboundPlans.id, id));
+
+    if (!result) return undefined;
+
+    return { 
+      ...result.inboundPlan, 
+      product: result.product!,
+      creator: result.creator!
+    };
+  }
+
+  async createInboundPlan(plan: InsertInboundPlan): Promise<InboundPlan> {
+    const [created] = await db.insert(inboundPlans).values(plan).returning();
+    return created;
+  }
+
+  async updateInboundPlan(id: number, plan: Partial<InsertInboundPlan>): Promise<InboundPlan> {
+    const [updated] = await db
+      .update(inboundPlans)
+      .set(plan)
+      .where(eq(inboundPlans.id, id))
+      .returning();
+    return updated;
+  }
+
+  async receiveInboundPlan(planId: number, goodQty: number, defectQty: number, shelfId: number, memo: string, userId: string): Promise<void> {
+    const plan = await this.getInboundPlan(planId);
+    if (!plan) throw new Error('Inbound plan not found');
+
+    const totalReceived = goodQty + defectQty;
+    const remainingQty = plan.plannedQty - plan.receivedQty;
+    
+    if (totalReceived > remainingQty) {
+      throw new Error('Total received quantity exceeds remaining planned quantity');
+    }
+
+    // Add good inventory to shelf
+    if (goodQty > 0) {
+      const currentBalance = await this.getInventoryBalance(plan.productId, shelfId, '通常');
+      await this.updateInventoryBalance(plan.productId, shelfId, '通常', (currentBalance?.quantity || 0) + goodQty);
+    }
+
+    // Add defect inventory to shelf
+    if (defectQty > 0) {
+      const currentDefectBalance = await this.getInventoryBalance(plan.productId, shelfId, '不良');
+      await this.updateInventoryBalance(plan.productId, shelfId, '不良', (currentDefectBalance?.quantity || 0) + defectQty);
+    }
+
+    // Update plan received quantity
+    const newReceivedQty = plan.receivedQty + totalReceived;
+    await db
+      .update(inboundPlans)
+      .set({ 
+        receivedQty: newReceivedQty,
+        status: newReceivedQty >= plan.plannedQty ? 'completed' : 'pending'
+      })
+      .where(eq(inboundPlans.id, planId));
+
+    // Create history entry
+    await this.createHistoryEntry({
+      operationType: '仕入受入・予定対応',
+      productId: plan.productId,
+      quantity: totalReceived,
+      fromLocationId: null,
+      toLocationId: shelfId,
+      fromState: null,
+      toState: goodQty > 0 ? '通常' : '不良',
+      referenceId: planId.toString(),
+      memo: memo || `仕入受入: 良品${goodQty}、不良${defectQty}`,
+      performedBy: userId,
     });
   }
 

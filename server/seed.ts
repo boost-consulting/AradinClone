@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { 
   users, locations, products, inventoryBalances, replenishmentCriteria,
-  shippingInstructions, inventoryHistory
+  shippingInstructions, inboundPlans, inventoryHistory
 } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
@@ -13,6 +13,7 @@ export async function seedDatabase() {
     // Truncate all tables in reverse dependency order for clean reset
     await db.execute(sql`TRUNCATE TABLE inventory_history CASCADE`);
     await db.execute(sql`TRUNCATE TABLE shipping_instructions CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE inbound_plans CASCADE`);
     await db.execute(sql`TRUNCATE TABLE replenishment_criteria CASCADE`);
     await db.execute(sql`TRUNCATE TABLE inventory_balances CASCADE`);
     await db.execute(sql`TRUNCATE TABLE products CASCADE`);
@@ -183,11 +184,36 @@ export async function seedDatabase() {
     await db.insert(shippingInstructions).values(shippingData);
     console.log("✅ Created sample shipping instructions");
 
-    // 7. Create some history entries
+    // 7. Create sample inbound plans
+    const inboundData = [];
+    const suppliers = ["サプライヤーA", "サプライヤーB", "サプライヤーC"];
+    
+    for (let i = 0; i < 5; i++) {
+      const randomProduct = createdProducts[Math.floor(Math.random() * createdProducts.length)];
+      const randomSupplier = suppliers[Math.floor(Math.random() * suppliers.length)];
+      const plannedQty = Math.floor(Math.random() * 50) + 10;
+      const receivedQty = i < 2 ? Math.floor(plannedQty * 0.6) : 0; // Some partially received
+      
+      inboundData.push({
+        productId: randomProduct.id,
+        supplierName: randomSupplier,
+        plannedQty,
+        receivedQty,
+        dueDate: new Date(Date.now() + (Math.floor(Math.random() * 14) + 1) * 24 * 60 * 60 * 1000), // Next 1-14 days
+        status: receivedQty >= plannedQty ? 'completed' : 'pending',
+        memo: `仕入予定サンプル ${i + 1}`,
+        createdBy: "warehouse_user",
+      });
+    }
+
+    await db.insert(inboundPlans).values(inboundData);
+    console.log("✅ Created sample inbound plans");
+
+    // 8. Create some history entries
     const historyData = [];
     for (let i = 0; i < 10; i++) {
       const randomProduct = createdProducts[Math.floor(Math.random() * createdProducts.length)];
-      const operationTypes = ["仕入受入", "棚入れ", "販売", "出荷指示作成"];
+      const operationTypes = ["仕入受入", "仕入受入・予定対応", "棚入れ", "販売", "出荷指示作成"];
       const randomOperation = operationTypes[Math.floor(Math.random() * operationTypes.length)];
       
       historyData.push({
@@ -214,6 +240,7 @@ export async function seedDatabase() {
     - ${inventoryData.length} inventory balance records
     - ${criteriaData.length} replenishment criteria
     - 5 shipping instructions
+    - 5 inbound plans
     - 10 history entries`);
 
   } catch (error) {

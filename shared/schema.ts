@@ -13,7 +13,7 @@ export const inventoryStateEnum = pgEnum('inventory_state', ['通常', '確保',
 // Operation types for history
 export const operationTypeEnum = pgEnum('operation_type', [
   '販売', '顧客返品', '出荷指示作成', '在庫確保', '出荷確定', 
-  '仕入受入', '棚入れ', '店舗返品送付', '返品受入', '返品検品'
+  '仕入受入', '仕入受入・予定対応', '棚入れ', '店舗返品送付', '返品受入', '返品検品'
 ]);
 
 // Location types
@@ -92,6 +92,20 @@ export const shippingInstructions = pgTable("shipping_instructions", {
   completedAt: timestamp("completed_at"),
 });
 
+// Inbound plans
+export const inboundPlans = pgTable("inbound_plans", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  supplierName: text("supplier_name").notNull(),
+  plannedQty: integer("planned_qty").notNull(),
+  receivedQty: integer("received_qty").default(0).notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  status: text("status").default('pending').notNull(), // pending, completed, canceled
+  memo: text("memo"),
+  createdBy: text("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // History/Audit trail - append only
 export const inventoryHistory = pgTable("inventory_history", {
   id: serial("id").primaryKey(),
@@ -117,6 +131,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   historyEntries: many(inventoryHistory),
   shippingInstructions: many(shippingInstructions),
+  inboundPlans: many(inboundPlans),
 }));
 
 export const locationsRelations = relations(locations, ({ many }) => ({
@@ -133,6 +148,7 @@ export const productsRelations = relations(products, ({ many }) => ({
   inventoryBalances: many(inventoryBalances),
   replenishmentCriteria: many(replenishmentCriteria),
   shippingInstructions: many(shippingInstructions),
+  inboundPlans: many(inboundPlans),
   historyEntries: many(inventoryHistory),
 }));
 
@@ -173,6 +189,17 @@ export const shippingInstructionsRelations = relations(shippingInstructions, ({ 
   }),
   creator: one(users, {
     fields: [shippingInstructions.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const inboundPlansRelations = relations(inboundPlans, ({ one }) => ({
+  product: one(products, {
+    fields: [inboundPlans.productId],
+    references: [products.id],
+  }),
+  creator: one(users, {
+    fields: [inboundPlans.createdBy],
     references: [users.id],
   }),
 }));
@@ -244,6 +271,27 @@ export const insertShippingInstructionSchema = createInsertSchema(shippingInstru
   quantity: z.coerce.number().int().positive(),
 });
 
+export const insertInboundPlanSchema = createInsertSchema(inboundPlans).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  // Accept flexible date formats and coerce to proper types
+  dueDate: z.union([
+    z.string().datetime({ offset: true }),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    z.date()
+  ]).transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
+  // Coerce numeric fields
+  productId: z.coerce.number().int().positive(),
+  plannedQty: z.coerce.number().int().positive(),
+  receivedQty: z.coerce.number().int().min(0).default(0),
+});
+
 export const insertInventoryHistorySchema = createInsertSchema(inventoryHistory).omit({
   id: true,
   performedAt: true,
@@ -262,6 +310,8 @@ export type ReplenishmentCriteria = typeof replenishmentCriteria.$inferSelect;
 export type InsertReplenishmentCriteria = z.infer<typeof insertReplenishmentCriteriaSchema>;
 export type ShippingInstruction = typeof shippingInstructions.$inferSelect;
 export type InsertShippingInstruction = z.infer<typeof insertShippingInstructionSchema>;
+export type InboundPlan = typeof inboundPlans.$inferSelect;
+export type InsertInboundPlan = z.infer<typeof insertInboundPlanSchema>;
 export type InventoryHistory = typeof inventoryHistory.$inferSelect;
 export type InsertInventoryHistory = z.infer<typeof insertInventoryHistorySchema>;
 
@@ -269,4 +319,4 @@ export type InsertInventoryHistory = z.infer<typeof insertInventoryHistorySchema
 export type InventoryState = '通常' | '確保' | '検品中' | '不良';
 export type UserRole = 'warehouse' | 'store' | 'admin';
 export type OperationType = '販売' | '顧客返品' | '出荷指示作成' | '在庫確保' | '出荷確定' | 
-  '仕入受入' | '棚入れ' | '店舗返品送付' | '返品受入' | '返品検品';
+  '仕入受入' | '仕入受入・予定対応' | '棚入れ' | '店舗返品送付' | '返品受入' | '返品検品';
