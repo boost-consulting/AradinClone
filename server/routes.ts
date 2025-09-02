@@ -80,6 +80,7 @@ const loginSchema = z.object({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
   // Session switch API for work mode changes
+  // DEMO-FRIENDLY IMPERSONATION SYSTEM (No permission checks)
   app.post("/api/auth/switch", requireAuth, async (req, res) => {
     try {
       const { mode, storeId } = req.body;
@@ -92,26 +93,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "storeId is required for store mode" });
       }
 
-      // Get current user to verify permissions
-      const currentUser = await storage.getUser(req.session.userId!);
-      if (!currentUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      // Update session with new role and storeId
+      // DEMO MODE: Allow anyone to impersonate any role
       if (mode === 'warehouse') {
-        // Only allow switching to warehouse if user has warehouse role
-        if (currentUser.role !== 'warehouse' && currentUser.role !== 'admin') {
-          return res.status(403).json({ message: "Not authorized for warehouse mode" });
-        }
+        // Switch to warehouse user
+        req.session.userId = 'warehouse_user';
         req.session.role = 'warehouse';
         req.session.storeId = undefined;
       } else {
-        // For store mode, verify the user has access to the specified store
-        if (currentUser.role === 'store' && currentUser.storeId !== storeId) {
-          return res.status(403).json({ message: "Not authorized for this store" });
-        }
-        req.session.role = currentUser.role; // Preserve original role
+        // Switch to store user for specified store
+        req.session.userId = `store_user_${storeId}`;
+        req.session.role = 'store';
         req.session.storeId = storeId;
       }
 
@@ -123,8 +114,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ 
+        userId: req.session.userId,
         role: req.session.role, 
-        storeId: req.session.storeId 
+        storeId: req.session.storeId,
+        mode: mode
       });
     } catch (error) {
       console.error('Session switch error:', error);
@@ -168,6 +161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // SESSION TRUTH API - Single source of truth for current session
   app.get("/api/auth/me", async (req, res) => {
     // Auto-login for demo purposes
     if (!req.session.userId) {
@@ -188,10 +182,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ message: "Not authenticated" });
     }
     
+    // Always return current session truth
     res.json({
       userId: req.session.userId,
       role: req.session.role,
-      storeId: req.session.storeId
+      storeId: req.session.storeId,
+      username: req.session.userId // For display purposes
     });
   });
 

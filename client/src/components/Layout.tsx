@@ -18,6 +18,12 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { workMode, setWorkMode, canPerform } = useWorkMode();
 
+  // Get current auth data for server session display
+  const { data: auth } = useQuery<any>({
+    queryKey: ['/api/auth/me'],
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Fetch pending shipments count for notification badge
   const { data: pendingShipments } = useQuery<any[]>({
     queryKey: ["/api/shipping/pending"],
@@ -203,12 +209,19 @@ export function Layout({ children }: LayoutProps) {
             </DropdownMenu>
             
             {/* Work Mode Badge and Switcher */}
-            <Badge 
-              className={`px-3 py-1 ${getWorkModeBadgeColor(workMode.mode)}`}
-              data-testid="badge-work-mode"
-            >
-              作業モード: {getWorkModeDisplayName(workMode)}
-            </Badge>
+            <div className="flex items-center space-x-2">
+              <Badge 
+                className={`px-3 py-1 ${getWorkModeBadgeColor(workMode.mode)}`}
+                data-testid="badge-work-mode"
+              >
+                作業モード: {getWorkModeDisplayName(workMode)}
+              </Badge>
+              {auth && (
+                <Badge variant="secondary" className="text-xs opacity-70">
+                  server role={auth.role}, storeId={auth.storeId || 'null'}
+                </Badge>
+              )}
+            </div>
             
             {/* Work Mode Switcher */}
             <DropdownMenu>

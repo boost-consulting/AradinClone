@@ -15,6 +15,24 @@ export interface Abilities {
   canSendStoreReturn: boolean;
 }
 
+// Updated ability definitions for unified system
+export interface UnifiedAbilities {
+  viewDashboard: boolean;
+  viewInventory: boolean;
+  viewHistory: boolean;
+  viewShipping: boolean;
+  viewSales: boolean;
+  viewReturns: boolean;
+  createShipment: boolean;
+  confirmShipment: boolean;
+  receiveInbound: boolean;
+  adjustInventory: boolean;
+  manageMaster: boolean;
+  viewMasterData: boolean;
+  viewReports: boolean;
+  manageUsers: boolean;
+}
+
 /**
  * Single source of truth for all permissions
  * Any permission check in the application must use this function
