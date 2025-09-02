@@ -387,8 +387,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const searchTerm = q.toLowerCase();
         items = items.filter(item => 
           item.product.sku.toLowerCase().includes(searchTerm) ||
-          item.product.name.toLowerCase().includes(searchTerm) ||
-          item.supplier.toLowerCase().includes(searchTerm)
+          item.product.modelName.toLowerCase().includes(searchTerm) ||
+          item.supplierName.toLowerCase().includes(searchTerm)
         );
       }
 
@@ -405,13 +405,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const formattedItems = items.map(item => ({
         id: item.id,
         sku: item.product.sku,
-        productName: item.product.name,
-        supplier: item.supplier,
+        productName: item.product.modelName,
+        supplierName: item.supplierName,
         dueDate: item.dueDate,
         plannedQty: item.plannedQty,
         receivedQty: item.receivedQty,
         remainingQty: item.remainingQty,
-        status: item.status
+        status: item.status,
+        product: item.product
       }));
 
       res.json({ total, items: formattedItems });
