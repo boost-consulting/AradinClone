@@ -945,10 +945,11 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    // For planned receiving, we could track this separately, but for now use the same as processed
+    // Get today's inbound plans summary for accurate receiving data
+    const todayInboundSummary = await this.getTodayInboundPlansSummary();
     const todayReceiving = { 
-      processed: todayReceivingResult.count, 
-      planned: todayReceivingResult.count + 15 // Add some buffer for pending
+      processed: todayInboundSummary.processed, 
+      planned: todayInboundSummary.total
     };
 
     // Get week sales (based on sales operations in the last 7 days)
@@ -1075,7 +1076,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBelowMinStockProducts(): Promise<(Product & { currentStock: number; minStock: number; location: Location })[]> {
-    // Get all products with replenishment criteria
+    // Get all products with replenishment criteria, excluding those with pending shipments
     const criteria = await db
       .select({
         product: products,
@@ -1087,7 +1088,12 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(locations, eq(replenishmentCriteria.locationId, locations.id))
       .where(and(
         sql`${replenishmentCriteria.minStock} > 0`,
-        eq(locations.type, 'warehouse') // Only check warehouse locations
+        eq(locations.type, 'warehouse'), // Only check warehouse locations
+        // Exclude items that have pending shipments - same logic as getLowStockAlerts
+        sql`(SELECT COUNT(*) FROM ${shippingInstructions} si 
+             WHERE si.product_id = ${replenishmentCriteria.productId} 
+             AND si.to_location_id = ${replenishmentCriteria.locationId} 
+             AND si.status = 'pending') = 0`
       ));
 
     const belowMinProducts: (Product & { currentStock: number; minStock: number; location: Location })[] = [];

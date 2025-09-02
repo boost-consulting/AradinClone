@@ -1,0 +1,207 @@
+お願い：下記の全項目を実装し、いちばん下の受け入れ確認すべてに実操作で合格してから完了報告をください。部分対応の中間報告は不要です。代替案がある場合も、全体整合が取れて受け入れ確認を全合格できる提案にしてください。
+
+指示（総点検・完全修復：作業モード／出荷確定／未処理仕入予定）
+0. 作業前の前提と初期化
+
+ブランチ：fix/mode-shipping-inbound を切って作業してください。
+
+依存：パッケージを再インストール（クリーン）→ビルド。
+
+DB：マイグレーション実行→シード実行（後述の「未処理仕入予定のダミー種まき」を必ず含める）。
+
+機械的点検：「未実装・スタブ」検出
+
+リポジトリ全体で TODO / FIXME / throw new Error / not implemented / 三点リーダ（...） を検索し、本実装に置換してください（特に auth 切替／ダッシュボード集計／入出庫API 付近）。
+
+A. 作業モード切替の復旧と一貫化（UI ⇄ サーバセッション）
+
+目的：UIの表示モードとサーバ側の権限判定（role/storeId）を常に一致させ、ねじれを根絶。
+
+A-1. セッション切替API（唯一の真実）
+
+POST /api/auth/switch
+
+入力：{ mode:'warehouse' } または { mode:'store', storeId:number }
+
+挙動：サーバのセッション（または署名付きCookie）に role と storeId を保存/上書き。
+
+返却：{ role, storeId }
+
+GET /api/auth/me
+
+返却：{ role, storeId, userId }（現セッションの真値）。
+
+Cookie/CORS要件
+
+フロントの fetch は常に credentials:'include'。
+
+Set-Cookie は HttpOnly; Path=/; SameSite=Lax; Secure（本番）など整合。
+
+CORS 設定で credentials を許可。
+
+A-2. フロントの切替フロー固定
+
+ヘッダーの「作業モード」選択時は、必ず
+
+POST /api/auth/switch を実行（credentials:'include'）
+
+続けて GET /api/auth/me を取得し、UI状態はこの返り値に同期
+
+下記クエリを invalidate→再fetch：
+
+ダッシュボードKPI、/api/shipping/pending、/api/inbounds/pending、/api/inventory、通知、右サイド履歴
+
+能力判定の基準は 常に /api/auth/me の role。クライアント独自の mode 状態は従属にする。
+
+UX：切替中は主要アクションを一時非活性＋スピナー。ヘッダーに 作業モード：倉庫｜店舗n（server role=…, storeId=…） を小さく併記（デバッグ可）。
+
+B. 倉庫モードで出荷確定できる状態を保証
+
+目的：倉庫モードで「上段の出荷カード→下段[出荷処理]→確定」が確実に通る。
+
+B-1. 能力判定を一本化（全ページ共通）
+
+共通 ability を1か所に集約：
+
+role==='WAREHOUSE' → canConfirmShipment=true（出荷確定可）
+
+role==='STORE' → canCreateShipRequest=true（出荷指示作成可）
+
+入出庫上段左パネルの「出荷処理」ボタンと、下段[出荷処理]の確定ボタンは同じ abilityで disabled を判定。
+
+倉庫なら活性／店舗なら非活性＋鍵アイコン＋ツールチップ。
+
+B-2. サーバの権限ガード（誤操作防止）
+
+POST /shipping/confirm は WAREHOUSEのみ許可（その他は 403）。
+
+履歴は在庫移動1行（倉庫棚→店舗）＋指示の状態更新。同一ロケーション（棚A→棚A）は禁止。
+
+B-3. 行→フォームの完全プリセット
+
+入出庫上段左の行「出荷処理」→下段[出荷処理]タブを自動選択し、店舗／SKU／数量をフォームにプリセット。
+
+プリセット値は単一の stateからAPIに渡るようにし、hidden state の二重管理を廃止。
+
+C. 未処理仕入予定の安定表示と自動生成（ダッシュボードと完全連動）
+
+目的：起動直後から「未処理仕入予定」が可視／在庫低下で自動的に増える／ダッシュボードと件数一致。
+
+C-1. データモデル（再掲・確認）
+
+inbound_plans：id / product_id / supplier_name / planned_qty / received_qty / due_date / status(pending|partially_received|completed|canceled) / memo / created_by / created_at
+
+制約：planned_qty >= received_qty、残量=planned - received、残量0→completed。
+
+C-2. ダミー予定の種まき（シード）
+
+初期投入：本日5件、+1日後5件、+3日後5件（計15件）。
+
+SKU：上位品目で回す／planned_qty=10／received_qty=0／status='pending'／supplier='デフォルト仕入先'。
+
+冪等：(sku, due_date, 'demo') をキーに重複作成しない。
+
+起動直後に右パネル（range=today）で >0 件が見える状態を保証。
+
+C-3. APIと集計の単一WHERE句化
+
+サーバ側で whereTodayPendingInbound() のような共通関数を作成：
+
+status IN ('pending','partially_received') AND due_date = 今日（TZは固定、例：Asia/Tokyo）
+
+ダッシュボード「本日の仕入受入（予定）」と、入出庫右パネル GET /api/inbounds/pending?range=today は必ずこの関数で集計／抽出。
+
+これにより カードの「予定件数」＝右パネルの件数 が常に一致。
+
+C-4. 自動補充予定（在庫低下トリガ）
+
+POST /api/inbounds/replenish?date=today（新規/既存でOK）
+
+倉庫通常在庫 < target の SKU で、pending/partially_received の plan が無い場合に限り、当日分の plan を新規作成。
+
+planned_qty = max(0, target - 現在庫)／supplier='デフォルト仕入先'／status='pending'。冪等。
+
+自動トリガ：以下の書込み成功直後に replenish 実行→右パネル＆ダッシュボード invalidate
+
+出荷確定（必須）
+
+必要に応じ 販売や返品検品で倉庫在庫が減るケース
+
+ダッシュボード→入出庫導線
+
+「本日の仕入受入（処理済/予定）」カードクリック→入出庫を開き、右パネルを range=today で強制表示（初回自動フォーカス）。
+
+D. 連動・再取得・排他（抜け漏れ防止）
+
+書込み成功後（出荷確定／受入登録／自動補充作成など）は最低限以下を invalidate→再fetch：
+
+ダッシュボードKPI、/api/shipping/pending、/api/inbounds/pending、/api/inventory、通知、右サイド履歴
+
+少数アラート⇔処理中の出荷指示は排他：
+
+SKU×店舗に pending 出荷指示がある間は「少数アラート」に表示しない（shipping/shortage で LEFT JOIN除外）。
+
+タイムゾーン固定（サーバ/フロントで統一、例：Asia/Tokyo）。due_date=今日 の判定ぶれを排除。
+
+E. エラーハンドリングと「見える化」
+
+モード切替失敗：HTTPコード・理由をトーストで表示（「切替失敗：ネットワーク/セッション」）。
+
+権限不足：403はトースト＋ボタンは非活性＋鍵アイコン＋ツールチップ。
+
+可視化：ヘッダーに server role/storeId を小さく併記（開発時のみでも可）。
+
+空状態：右パネル0件時に
+
+ラベル「本日分はありません」＋**「7日間に切替」**ボタン
+
+倉庫モード時のみ**「不足分の仕入予定を自動作成」**ボタン
+
+F. 受け入れ確認（すべて○で完了）
+
+モード切替
+
+ヘッダーで 倉庫 を選択 → POST /api/auth/switch → GET /api/auth/me が role=WAREHOUSE を返し、ヘッダー表示と一致。
+
+主要リストとボタン活性が即時切替。
+
+倉庫モードで出荷確定が実行可能
+
+上段左行「出荷処理」→下段[出荷処理]にプリセット→確定成功（403なし）。
+
+店舗モードでは同ボタンが非活性。
+
+“本日の仕入受入（予定）”＝右パネル（today）
+
+ダッシュボードの予定件数と、入出庫右パネル（range=today）の件数が一致。
+
+カードクリックで入出庫へ遷移→同一リストが表示。
+
+ダミー予定の可視化
+
+アプリ起動直後、右パネル（today）に5件以上表示（シードの成果）。再シードでも重複しない。
+
+在庫低下→自動補充
+
+出荷確定後、/api/inbounds/replenish が発火し、右パネルとダッシュボードの予定件数が増加（再fetch済）。
+
+排他ルール
+
+pending の出荷指示があるSKU×店舗は少数アラートに出ない。出荷確定で不足が解消すれば表示されない。
+
+G. 最短デバッグ手順（詰まったらこの順で確認）
+
+セッション同期：/api/auth/switch 後に 必ず /api/auth/me を呼び、role/storeId をヘッダーに表示。UIと不一致なら切替バグ。
+
+fetch の資格情報：ネットワークタブで credentials: include が付いているか。Cookie が往復しているか。
+
+inbound_plans 実データ：本日分の status が pending/partially_received で、due_date=今日 になっているか（TZ要注意）。
+
+react-queryのキー：role/storeId/range を含めているか。含めないと切替で古いキャッシュが残る。
+
+少数アラートSQL：shipping/shortage が pending 存在行をきちんと除外しているか。
+
+403ガード：誤ロールで叩いて403が返るか（ガードが沈黙しているとUIの誤活性を見落とす）。
+
+以上です。
+作業モードの復旧／倉庫での出荷確定／未処理仕入予定のダミー＋自動生成／ダッシュボードと右パネルの完全連動を、この一式で確実に仕上げてください。

@@ -63,7 +63,8 @@ export function WorkModeProvider({ children }: WorkModeProviderProps) {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to switch session mode: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Session switch failed: ${response.status} ${errorText}`);
       }
 
       const result = await response.json();
@@ -72,17 +73,22 @@ export function WorkModeProvider({ children }: WorkModeProviderProps) {
       setWorkModeState(mode);
       localStorage.setItem('workMode', JSON.stringify(mode));
       
+      // Force refresh auth data first, then invalidate all dependent queries
+      await queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      await queryClient.refetchQueries({ queryKey: ['/api/auth/me'] });
+      
       // Invalidate all relevant queries after mode switch
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/shipping/pending'] });
       queryClient.invalidateQueries({ queryKey: ['/api/inbounds/pending'] });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory'] });
       queryClient.invalidateQueries({ queryKey: ['/api/history'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/locations'] });
       
     } catch (error) {
       console.error('Failed to switch work mode:', error);
-      // Keep local state unchanged if server call fails
+      // Show user-friendly error message
+      throw error;
     }
   };
 
