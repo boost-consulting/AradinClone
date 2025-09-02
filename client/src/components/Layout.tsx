@@ -209,19 +209,12 @@ export function Layout({ children }: LayoutProps) {
             </DropdownMenu>
             
             {/* Work Mode Badge and Switcher */}
-            <div className="flex items-center space-x-2">
-              <Badge 
-                className={`px-3 py-1 ${getWorkModeBadgeColor(workMode.mode)}`}
-                data-testid="badge-work-mode"
-              >
-                作業モード: {getWorkModeDisplayName(workMode)}
-              </Badge>
-              {auth && (
-                <Badge variant="secondary" className="text-xs opacity-70">
-                  server role={auth.role}, storeId={auth.storeId || 'null'}
-                </Badge>
-              )}
-            </div>
+            <Badge 
+              className={`px-3 py-1 ${getWorkModeBadgeColor(workMode.mode)}`}
+              data-testid="badge-work-mode"
+            >
+              作業モード: {getWorkModeDisplayName(workMode)}
+            </Badge>
             
             {/* Work Mode Switcher */}
             <DropdownMenu>
