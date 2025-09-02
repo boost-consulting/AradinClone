@@ -823,6 +823,11 @@ export default function Warehouse() {
   const handleInboundSelect = (plan: InboundPlan) => {
     setSelectedInbound(plan);
     setSelectedShipment(null);
+    // Auto-switch to inbound tab when selecting an inbound plan
+    const inboundTab = document.querySelector('[value="inbound"]') as HTMLElement;
+    if (inboundTab) {
+      inboundTab.click();
+    }
   };
 
   const handleProcessSuccess = () => {

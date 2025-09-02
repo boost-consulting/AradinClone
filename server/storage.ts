@@ -1150,11 +1150,12 @@ export class DatabaseStorage implements IStorage {
     let pending = 0;
 
     results.forEach(row => {
-      total += row.count;
+      const count = Number(row.count);
+      total += count;
       if (row.status === 'completed') {
-        processed += row.count;
+        processed += count;
       } else if (row.status === 'pending' || row.status === 'partially_received') {
-        pending += row.count;
+        pending += count;
       }
     });
 
