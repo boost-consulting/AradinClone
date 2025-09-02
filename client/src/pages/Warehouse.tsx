@@ -304,13 +304,29 @@ function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
   });
   
   const { data: inboundData, isLoading } = useQuery({
-    queryKey: ["/api/inbounds/pending", { 
-      range: filter === 'overdue' ? 'all' : filter,
-      include_overdue: filter === 'overdue',
-      q: searchQuery,
-      limit: 50,
-      offset: 0
-    }],
+    queryKey: ["/api/inbounds/pending", filter, searchQuery],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        range: filter === 'overdue' ? 'all' : filter,
+        include_overdue: filter === 'overdue' ? 'true' : 'false',
+        limit: '50',
+        offset: '0'
+      });
+      
+      if (searchQuery) {
+        params.set('q', searchQuery);
+      }
+      
+      const response = await fetch(`/api/inbounds/pending?${params}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch pending inbounds: ${response.statusText}`);
+      }
+      
+      return response.json();
+    },
     refetchInterval: 30000,
   });
 

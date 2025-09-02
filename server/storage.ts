@@ -74,6 +74,9 @@ export interface IStorage {
   autoReplenishInventory(date: string, performedBy: string): Promise<{ createdPlans: number; message: string }>;
   getBelowMinStockProducts(): Promise<(Product & { currentStock: number; minStock: number; location: Location })[]>;
 
+  // Demo data seeding
+  seedDemoInboundPlans(): Promise<void>;
+
   // Unified inbound summary methods
   getTodayInboundPlansSummary(): Promise<{ total: number; processed: number; pending: number }>;
   getInboundPlansForDateRange(startDate: string, endDate: string, includeOverdue?: boolean): Promise<(InboundPlan & { product: Product; creator: User; remainingQty: number })[]>;
@@ -1015,6 +1018,59 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('Auto-replenishment error:', error);
       throw new Error('自動補充処理中にエラーが発生しました');
+    }
+  }
+
+  // Seed demo inbound plans for consistent experience
+  async seedDemoInboundPlans(): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const dayAfterTomorrow = new Date(today);
+    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 3);
+
+    // Get sample products and warehouse location
+    const sampleProducts = await db.select().from(products).limit(5);
+    const warehouse = await db.select().from(locations).where(eq(locations.type, 'warehouse')).limit(1);
+    
+    if (sampleProducts.length === 0 || warehouse.length === 0) {
+      console.warn('No products or warehouse found for seeding demo data');
+      return;
+    }
+
+    const warehouseId = warehouse[0].id;
+    const dates = [today, tomorrow, dayAfterTomorrow];
+    
+    for (const date of dates) {
+      for (let i = 0; i < Math.min(5, sampleProducts.length); i++) {
+        const product = sampleProducts[i];
+        
+        // Check if plan already exists (idempotency)
+        const existingPlan = await db
+          .select()
+          .from(inboundPlans)
+          .where(and(
+            eq(inboundPlans.productId, product.id),
+            eq(inboundPlans.dueDate, date.toISOString().split('T')[0]),
+            eq(inboundPlans.status, 'pending')
+          ))
+          .limit(1);
+          
+        if (existingPlan.length === 0) {
+          await db.insert(inboundPlans).values({
+            productId: product.id,
+            plannedQty: 10,
+            receivedQty: 0,
+            supplier: 'デフォルト仕入先',
+            dueDate: date.toISOString().split('T')[0],
+            status: 'pending',
+            createdBy: 'admin'
+          });
+        }
+      }
     }
   }
 

@@ -106,10 +106,11 @@ export function WorkModeProvider({ children }: WorkModeProviderProps) {
     }
   }, [auth, locations, workMode.mode]);
 
-  // Normalize the user role from database
-  const userRole = auth ? normalizeRole(auth.role) : 'STORE';
+  // Use server role as single source of truth instead of local workMode
+  const serverRole = auth?.role;
+  const userRole = serverRole ? normalizeRole(serverRole) : 'STORE';
   
-  // Get abilities based on user role (unified truth table)
+  // Get abilities based on server role (single source of truth)
   const abilities = getAbilities(userRole);
 
   // Permission check using unified ability system
