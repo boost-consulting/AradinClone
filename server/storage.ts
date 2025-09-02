@@ -10,7 +10,7 @@ import {
   type InventoryState, type OperationType
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, lt, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, lt, lte, gte, sql, inArray, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -55,11 +55,24 @@ export interface IStorage {
 
   // Inbound plan methods
   getInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]>;
-  getPendingInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]>;
+  getPendingInboundPlans(filters?: {
+    range?: string;
+    includeOverdue?: boolean;
+    searchQuery?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    items: (InboundPlan & { product: Product; creator: User; remainingQty: number })[];
+    total: number;
+  }>;
   getInboundPlan(id: number): Promise<(InboundPlan & { product: Product; creator: User }) | undefined>;
   createInboundPlan(plan: InsertInboundPlan): Promise<InboundPlan>;
   updateInboundPlan(id: number, plan: Partial<InsertInboundPlan>): Promise<InboundPlan>;
   receiveInboundPlan(planId: number, goodQty: number, defectQty: number, shelfId: number, memo: string, userId: string): Promise<void>;
+
+  // Auto-replenishment methods
+  autoReplenishInventory(date: string, performedBy: string): Promise<{ createdPlans: number; message: string }>;
+  getBelowMinStockProducts(): Promise<(Product & { currentStock: number; minStock: number; location: Location })[]>;
 
   // History methods
   getInventoryHistory(limit?: number): Promise<(InventoryHistory & { product: Product; fromLocation?: Location; toLocation?: Location; performer: User })[]>;
@@ -517,8 +530,18 @@ export class DatabaseStorage implements IStorage {
       })));
   }
 
-  async getPendingInboundPlans(): Promise<(InboundPlan & { product: Product; creator: User })[]> {
-    return await db
+  async getPendingInboundPlans(filters?: {
+    range?: string;
+    includeOverdue?: boolean;
+    searchQuery?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    items: (InboundPlan & { product: Product; creator: User; remainingQty: number })[];
+    total: number;
+  }> {
+    const f = filters || {};
+    let query = db
       .select({
         inboundPlan: inboundPlans,
         product: products,
@@ -527,13 +550,94 @@ export class DatabaseStorage implements IStorage {
       .from(inboundPlans)
       .leftJoin(products, eq(inboundPlans.productId, products.id))
       .leftJoin(users, eq(inboundPlans.createdBy, users.id))
-      .where(eq(inboundPlans.status, 'pending'))
-      .orderBy(asc(inboundPlans.dueDate))
-      .then(rows => rows.map(row => ({ 
-        ...row.inboundPlan, 
-        product: row.product!,
-        creator: row.creator!
-      })));
+      .where(and(
+        or(
+          eq(inboundPlans.status, 'pending'),
+          eq(inboundPlans.status, 'partially_received')
+        )
+      ));
+
+    // Date range filtering
+    if (f.range === 'today') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      if (f.includeOverdue) {
+        query = query.where(and(
+          or(
+            eq(inboundPlans.status, 'pending'),
+            eq(inboundPlans.status, 'partially_received')
+          ),
+          lte(inboundPlans.dueDate, tomorrow.toISOString())
+        ));
+      } else {
+        query = query.where(and(
+          or(
+            eq(inboundPlans.status, 'pending'),
+            eq(inboundPlans.status, 'partially_received')
+          ),
+          gte(inboundPlans.dueDate, today.toISOString()),
+          lt(inboundPlans.dueDate, tomorrow.toISOString())
+        ));
+      }
+    } else if (f.range === '7d') {
+      const today = new Date();
+      const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      query = query.where(and(
+        or(
+          eq(inboundPlans.status, 'pending'),
+          eq(inboundPlans.status, 'partially_received')
+        ),
+        lte(inboundPlans.dueDate, weekFromNow.toISOString())
+      ));
+    }
+
+    // Search filtering
+    if (f.searchQuery) {
+      query = query.where(and(
+        or(
+          eq(inboundPlans.status, 'pending'),
+          eq(inboundPlans.status, 'partially_received')
+        ),
+        or(
+          ilike(products.sku, `%${f.searchQuery}%`),
+          ilike(inboundPlans.supplierName, `%${f.searchQuery}%`)
+        )
+      ));
+    }
+
+    const totalQuery = db
+      .select({ count: sql<number>`count(*)` })
+      .from(inboundPlans)
+      .leftJoin(products, eq(inboundPlans.productId, products.id))
+      .where(and(
+        or(
+          eq(inboundPlans.status, 'pending'),
+          eq(inboundPlans.status, 'partially_received')
+        )
+      ));
+
+    const [items, totalResult] = await Promise.all([
+      query
+        .orderBy(asc(inboundPlans.dueDate))
+        .limit(f.limit || 50)
+        .offset(f.offset || 0)
+        .then(rows => rows.map(row => ({
+          ...row.inboundPlan,
+          product: row.product!,
+          creator: row.creator!,
+          remainingQty: row.inboundPlan.plannedQty - row.inboundPlan.receivedQty
+        }))),
+      totalQuery
+    ]);
+
+    return {
+      items,
+      total: totalResult[0]?.count || 0
+    };
   }
 
   async getInboundPlan(id: number): Promise<(InboundPlan & { product: Product; creator: User }) | undefined> {
@@ -855,6 +959,95 @@ export class DatabaseStorage implements IStorage {
       todayReceiving,
       weekSales,
     };
+  }
+
+  // Auto-replenishment implementation
+  async autoReplenishInventory(date: string, performedBy: string): Promise<{ createdPlans: number; message: string }> {
+    try {
+      // Get products below minimum stock levels
+      const belowMinProducts = await this.getBelowMinStockProducts();
+      
+      if (belowMinProducts.length === 0) {
+        return {
+          createdPlans: 0,
+          message: "在庫不足の商品はありません"
+        };
+      }
+
+      let createdCount = 0;
+      const dueDate = date === 'today' ? new Date() : new Date(date);
+      dueDate.setDate(dueDate.getDate() + 3); // Default 3 days for replenishment
+
+      for (const product of belowMinProducts) {
+        const replenishQty = product.minStock - product.currentStock + 50; // Add buffer
+        
+        const planData: InsertInboundPlan = {
+          productId: product.id,
+          plannedQty: replenishQty,
+          receivedQty: 0,
+          locationId: product.location.id,
+          supplierName: "自動補充システム",
+          dueDate: dueDate.toISOString(),
+          status: 'pending',
+          memo: `自動補充：最小在庫(${product.minStock})を下回った商品の補充`,
+          createdBy: performedBy
+        };
+
+        await this.createInboundPlan(planData);
+        createdCount++;
+      }
+
+      return {
+        createdPlans: createdCount,
+        message: `${createdCount}件の補充計画を作成しました`
+      };
+    } catch (error) {
+      console.error('Auto-replenishment error:', error);
+      throw new Error('自動補充処理中にエラーが発生しました');
+    }
+  }
+
+  async getBelowMinStockProducts(): Promise<(Product & { currentStock: number; minStock: number; location: Location })[]> {
+    // Get all products with replenishment criteria
+    const criteria = await db
+      .select({
+        product: products,
+        location: locations,
+        criteria: replenishmentCriteria
+      })
+      .from(replenishmentCriteria)
+      .leftJoin(products, eq(replenishmentCriteria.productId, products.id))
+      .leftJoin(locations, eq(replenishmentCriteria.locationId, locations.id))
+      .where(and(
+        sql`${replenishmentCriteria.minStock} > 0`,
+        eq(locations.type, 'warehouse') // Only check warehouse locations
+      ));
+
+    const belowMinProducts: (Product & { currentStock: number; minStock: number; location: Location })[] = [];
+
+    for (const item of criteria) {
+      if (!item.product || !item.location || !item.criteria) continue;
+
+      // Get current stock for this product at this location
+      const currentBalance = await this.getInventoryBalance(
+        item.product.id,
+        item.location.id,
+        '通常'
+      );
+
+      const currentStock = currentBalance?.quantity || 0;
+
+      if (currentStock < item.criteria.minStock) {
+        belowMinProducts.push({
+          ...item.product,
+          currentStock,
+          minStock: item.criteria.minStock,
+          location: item.location
+        });
+      }
+    }
+
+    return belowMinProducts;
   }
 
 }

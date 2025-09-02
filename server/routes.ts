@@ -281,8 +281,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/inbounds/pending", requireAuth, async (req, res) => {
     try {
-      const plans = await storage.getPendingInboundPlans();
-      res.json(plans);
+      const { range = 'all', include_overdue = 'false', q = '', limit = 50, offset = 0 } = req.query;
+      
+      const filters = {
+        range: range as string,
+        includeOverdue: include_overdue === 'true',
+        searchQuery: q as string,
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string)
+      };
+      
+      const result = await storage.getPendingInboundPlans(filters);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch pending inbound plans" });
     }
@@ -345,6 +355,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       const message = error instanceof Error ? error.message : "Failed to receive inbound";
+      res.status(500).json({ message });
+    }
+  });
+
+  // Auto-replenishment endpoint
+  app.post("/api/inbounds/replenish", requireAuth, requireRole('warehouse'), async (req, res) => {
+    try {
+      const { date = 'today' } = req.query;
+      
+      const result = await storage.autoReplenishInventory(date as string, req.session.userId!);
+      res.json(result);
+    } catch (error) {
+      console.error('Error in auto-replenishment:', error);
+      const message = error instanceof Error ? error.message : "Failed to auto-replenish inventory";
       res.status(500).json({ message });
     }
   });

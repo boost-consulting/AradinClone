@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { getAbilities, normalizeRole, type UserRole, type Abilities } from './abilities';
+import { queryClient } from './queryClient';
 
 export interface WorkMode {
   mode: 'warehouse' | 'store';
@@ -10,7 +12,9 @@ export interface WorkMode {
 interface WorkModeContextType {
   workMode: WorkMode;
   setWorkMode: (mode: WorkMode) => void;
-  canPerform: (action: string) => boolean;
+  canPerform: (action: keyof Abilities) => boolean;
+  abilities: Abilities;
+  userRole: UserRole;
 }
 
 const WorkModeContext = createContext<WorkModeContextType | undefined>(undefined);
@@ -46,6 +50,12 @@ export function WorkModeProvider({ children }: WorkModeProviderProps) {
   const setWorkMode = (mode: WorkMode) => {
     setWorkModeState(mode);
     localStorage.setItem('workMode', JSON.stringify(mode));
+    
+    // Invalidate relevant queries when work mode changes
+    queryClient.invalidateQueries({ queryKey: ['/api/shipping/pending'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/inbounds/pending'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/inventory'] });
   };
 
   // Auto-set work mode based on user role if not already set
@@ -68,33 +78,25 @@ export function WorkModeProvider({ children }: WorkModeProviderProps) {
     }
   }, [auth, locations, workMode.mode]);
 
-  const canPerform = (action: string): boolean => {
-    if (!auth || !auth.role) return false;
-    
-    const { mode } = workMode;
-    const userRole = auth.role;
+  // Normalize the user role from database
+  const userRole = auth ? normalizeRole(auth.role) : 'STORE';
+  
+  // Get abilities based on user role (unified truth table)
+  const abilities = getAbilities(userRole);
 
-    // Permission matrix
-    const permissions: Record<string, string[]> = {
-      'shipping.create': ['store'],
-      'shipping.confirm': ['warehouse'],
-      'sales.create': ['store'],
-      'returns.customer': ['store'],
-      'returns.send': ['store'],
-      'inbound.create': ['warehouse'],
-      'inbound.receive': ['warehouse'],
-      'returns.inspect': ['warehouse'],
-    };
-
-    const requiredRoles = permissions[action];
-    if (!requiredRoles) return true; // Default allow for undefined actions
-
-    // Check if current work mode allows this action
-    return requiredRoles.includes(mode) && requiredRoles.includes(userRole);
+  // Permission check using unified ability system
+  const canPerform = (action: keyof Abilities): boolean => {
+    return abilities[action];
   };
 
   return (
-    <WorkModeContext.Provider value={{ workMode, setWorkMode, canPerform }}>
+    <WorkModeContext.Provider value={{ 
+      workMode, 
+      setWorkMode, 
+      canPerform, 
+      abilities, 
+      userRole 
+    }}>
       {children}
     </WorkModeContext.Provider>
   );

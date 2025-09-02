@@ -6,7 +6,7 @@ import { ArrowUp, Truck, Package, AlertTriangle, TrendingUp, ArrowRight } from "
 import { DashboardMetrics, LowStockAlert, PendingShipment } from "@/lib/types";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
@@ -208,9 +208,11 @@ export default function Dashboard() {
               </table>
             </div>
             <div className="pt-4 border-t border-border mt-4">
-              <Button variant="link" className="text-sm p-0" onClick={() => setLocation('/warehouse')} data-testid="button-view-all-shipments">
-                すべての出荷指示を表示 <ArrowRight className="ml-1 h-3 w-3" />
-              </Button>
+              <Link href="/warehouse">
+                <Button variant="link" className="text-sm p-0" data-testid="button-view-all-shipments">
+                  すべての出荷指示を表示 <ArrowRight className="ml-1 h-3 w-3" />
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -259,9 +261,11 @@ export default function Dashboard() {
               </table>
             </div>
             <div className="pt-4 border-t border-border mt-4">
-              <Button variant="link" className="text-sm p-0" onClick={() => setLocation('/shipping')} data-testid="button-view-all-alerts">
-                すべてのアラートを表示 <ArrowRight className="ml-1 h-3 w-3" />
-              </Button>
+              <Link href="/warehouse">
+                <Button variant="link" className="text-sm p-0" data-testid="button-view-all-alerts">
+                  在庫補充ページへ <ArrowRight className="ml-1 h-3 w-3" />
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

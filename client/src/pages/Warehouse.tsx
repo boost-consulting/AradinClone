@@ -15,11 +15,78 @@ import { useWorkMode } from "@/lib/workMode";
 import { 
   Package, Truck, ShoppingCart, AlertCircle, Calendar, MapPin, User, 
   ArrowDown, ArrowUp, CheckCircle2, Loader2, Filter, Search, Lock,
-  Clock, Building2 
+  Clock, Building2, RefreshCw
 } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+function AutoReplenishButton() {
+  const { canPerform } = useWorkMode();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const replenishMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/inbounds/replenish", { date: 'today' });
+    },
+    onSuccess: (result) => {
+      toast({
+        title: "自動補充完了",
+        description: result.message,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbounds/pending"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "自動補充エラー",
+        description: error instanceof Error ? error.message : "エラーが発生しました",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleReplenish = async () => {
+    if (!canPerform('canReceiveInbound')) return;
+    
+    setIsLoading(true);
+    replenishMutation.mutate();
+    setIsLoading(false);
+  };
+
+  if (!canPerform('canReceiveInbound')) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button size="sm" variant="outline" disabled>
+            <Lock className="h-3 w-3 mr-1" />
+            自動補充
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>倉庫モードでのみ実行可能</p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Button 
+      size="sm" 
+      variant="outline" 
+      onClick={handleReplenish}
+      disabled={isLoading || replenishMutation.isPending}
+      className="text-xs"
+    >
+      {isLoading || replenishMutation.isPending ? (
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      ) : (
+        <RefreshCw className="h-3 w-3 mr-1" />
+      )}
+      自動補充
+    </Button>
+  );
+}
 
 interface InventoryAdjustment {
   productId: number;
@@ -182,7 +249,7 @@ function PendingShipmentsPanel({ onShipmentSelect }: PendingShipmentsProps) {
                 </div>
                 
                 <div className="flex justify-end">
-                  {canPerform('shipping.confirm') ? (
+                  {canPerform('canConfirmShipment') ? (
                     <Button 
                       size="sm" 
                       onClick={() => onShipmentSelect?.(shipment)}
@@ -222,47 +289,21 @@ function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const { canPerform } = useWorkMode();
   
-  const { data: pendingInbounds, isLoading } = useQuery<InboundPlan[]>({
-    queryKey: ["/api/inbounds/pending"],
+  const { data: inboundData, isLoading } = useQuery({
+    queryKey: ["/api/inbounds/pending", { 
+      range: filter === 'overdue' ? 'all' : filter,
+      include_overdue: filter === 'overdue',
+      q: searchQuery,
+      limit: 50,
+      offset: 0
+    }],
     refetchInterval: 30000,
   });
 
-  const filteredInbounds = useMemo(() => {
-    if (!pendingInbounds) return [];
-    
-    return pendingInbounds.filter(plan => {
-      // Date filter
-      if (filter !== 'all') {
-        const dueDate = plan.dueDate ? new Date(plan.dueDate) : null;
-        const today = new Date();
-        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-        const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-        
-        switch (filter) {
-          case 'overdue':
-            if (!dueDate || dueDate >= today) return false;
-            break;
-          case 'today':
-            if (!dueDate || dueDate.toDateString() !== today.toDateString()) return false;
-            break;
-          case '7days':
-            if (!dueDate || dueDate > weekFromNow) return false;
-            break;
-        }
-      }
-      
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return (
-          plan.product?.sku?.toLowerCase().includes(query) ||
-          plan.supplierName?.toLowerCase().includes(query)
-        );
-      }
-      
-      return true;
-    });
-  }, [pendingInbounds, filter, searchQuery]);
+  const pendingInbounds = inboundData?.items || [];
+
+  // Server-side filtering eliminates the need for client-side filtering
+  const filteredInbounds = pendingInbounds;
 
   if (isLoading) {
     return (
@@ -281,6 +322,8 @@ function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
         </div>
         
         <div className="flex items-center gap-2">
+          <AutoReplenishButton />
+          
           <Select value={filter} onValueChange={setFilter}>
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -346,7 +389,7 @@ function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
                     進捗: {plan.receivedQty}/{plan.plannedQty}
                   </div>
                   
-                  {canPerform('inbound.receive') ? (
+                  {canPerform('canReceiveInbound') ? (
                     <Button 
                       size="sm" 
                       onClick={() => onInboundSelect?.(plan)}
@@ -389,9 +432,7 @@ function ShippingProcessForm({ selectedShipment, onSuccess }: ShippingFormProps)
   
   const confirmShippingMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/shipping/${id}/confirm`, {
-        method: "POST"
-      });
+      return apiRequest("POST", `/api/shipping/${id}/confirm`);
     },
     onSuccess: () => {
       toast({
@@ -420,7 +461,7 @@ function ShippingProcessForm({ selectedShipment, onSuccess }: ShippingFormProps)
   });
 
   const handleConfirm = async () => {
-    if (!selectedShipment || !canPerform('shipping.confirm')) return;
+    if (!selectedShipment || !canPerform('canConfirmShipment')) return;
     
     setIsSubmitting(true);
     confirmShippingMutation.mutate(selectedShipment.id);
@@ -485,7 +526,7 @@ function ShippingProcessForm({ selectedShipment, onSuccess }: ShippingFormProps)
       </div>
       
       <div className="flex justify-end gap-2">
-        {canPerform('shipping.confirm') ? (
+        {canPerform('canConfirmShipment') ? (
           <Button 
             onClick={handleConfirm} 
             disabled={isSubmitting}
@@ -540,10 +581,7 @@ function InboundReceiveForm({ selectedInbound, onSuccess }: InboundFormProps) {
   
   const receiveMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest(`/api/inbounds/${selectedInbound!.id}/receive`, {
-        method: "POST",
-        body: data
-      });
+      return apiRequest("POST", `/api/inbounds/${selectedInbound!.id}/receive`, data);
     },
     onSuccess: () => {
       toast({
@@ -577,7 +615,7 @@ function InboundReceiveForm({ selectedInbound, onSuccess }: InboundFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedInbound || !canPerform('inbound.receive')) return;
+    if (!selectedInbound || !canPerform('canReceiveInbound')) return;
     
     if (!formData.shelfId || (formData.goodQty + formData.defectQty) <= 0) {
       toast({
@@ -710,7 +748,7 @@ function InboundReceiveForm({ selectedInbound, onSuccess }: InboundFormProps) {
         </div>
         
         <div className="flex justify-end gap-2">
-          {canPerform('inbound.receive') ? (
+          {canPerform('canReceiveInbound') ? (
             <Button 
               type="submit" 
               disabled={isSubmitting || (formData.goodQty + formData.defectQty) <= 0 || !formData.shelfId}
@@ -744,12 +782,12 @@ function InboundReceiveForm({ selectedInbound, onSuccess }: InboundFormProps) {
 
 export default function Warehouse() {
   const [selectedShipment, setSelectedShipment] = useState<any>(null);
-  const [selectedInbound, setSelectedInbound] = useState<InboundPlan | null>(null);
+  const [selectedInbound, setSelectedInbound] = useState<InboundPlan | undefined>(undefined);
   const { workMode } = useWorkMode();
 
   const handleShipmentSelect = (shipment: any) => {
     setSelectedShipment(shipment);
-    setSelectedInbound(null);
+    setSelectedInbound(undefined);
   };
 
   const handleInboundSelect = (plan: InboundPlan) => {
@@ -759,7 +797,7 @@ export default function Warehouse() {
 
   const handleProcessSuccess = () => {
     setSelectedShipment(null);
-    setSelectedInbound(null);
+    setSelectedInbound(undefined);
   };
 
   return (
