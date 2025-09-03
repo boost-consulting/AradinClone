@@ -285,7 +285,7 @@ interface PendingInboundProps {
 }
 
 function PendingInboundPanel({ onInboundSelect }: PendingInboundProps) {
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('today');
   const [searchQuery, setSearchQuery] = useState('');
   const { canPerform } = useWorkMode();
 
@@ -824,10 +824,12 @@ export default function Warehouse() {
     setSelectedInbound(plan);
     setSelectedShipment(null);
     // Auto-switch to inbound tab when selecting an inbound plan
-    const inboundTab = document.querySelector('[value="inbound"]') as HTMLElement;
-    if (inboundTab) {
-      inboundTab.click();
-    }
+    setTimeout(() => {
+      const inboundTab = document.querySelector('[data-value="inbound"]') as HTMLElement;
+      if (inboundTab) {
+        inboundTab.click();
+      }
+    }, 100);
   };
 
   const handleProcessSuccess = () => {
