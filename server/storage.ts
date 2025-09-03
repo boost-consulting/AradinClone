@@ -555,21 +555,14 @@ export class DatabaseStorage implements IStorage {
     total: number;
   }> {
     const f = filters || {};
-    let query = db
-      .select({
-        inboundPlan: inboundPlans,
-        product: products,
-        creator: users,
-      })
-      .from(inboundPlans)
-      .leftJoin(products, eq(inboundPlans.productId, products.id))
-      .leftJoin(users, eq(inboundPlans.createdBy, users.id))
-      .where(and(
-        or(
-          eq(inboundPlans.status, 'pending'),
-          eq(inboundPlans.status, 'partially_received')
-        )
-      ));
+    
+    // Build conditions array
+    const conditions = [
+      or(
+        eq(inboundPlans.status, 'pending'),
+        eq(inboundPlans.status, 'partially_received')
+      )
+    ];
 
     // Date range filtering
     if (f.range === 'today') {
@@ -579,49 +572,35 @@ export class DatabaseStorage implements IStorage {
       tomorrow.setDate(tomorrow.getDate() + 1);
       
       if (f.includeOverdue) {
-        query = query.where(and(
-          or(
-            eq(inboundPlans.status, 'pending'),
-            eq(inboundPlans.status, 'partially_received')
-          ),
-          lte(inboundPlans.dueDate, tomorrow.toISOString())
-        ));
+        conditions.push(lte(inboundPlans.dueDate, tomorrow));
       } else {
-        query = query.where(and(
-          or(
-            eq(inboundPlans.status, 'pending'),
-            eq(inboundPlans.status, 'partially_received')
-          ),
-          gte(inboundPlans.dueDate, today.toISOString()),
-          lt(inboundPlans.dueDate, tomorrow.toISOString())
-        ));
+        conditions.push(gte(inboundPlans.dueDate, today));
+        conditions.push(lt(inboundPlans.dueDate, tomorrow));
       }
     } else if (f.range === '7d') {
       const today = new Date();
       const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-      
-      query = query.where(and(
-        or(
-          eq(inboundPlans.status, 'pending'),
-          eq(inboundPlans.status, 'partially_received')
-        ),
-        lte(inboundPlans.dueDate, weekFromNow.toISOString())
-      ));
+      conditions.push(lte(inboundPlans.dueDate, weekFromNow));
     }
 
     // Search filtering
     if (f.searchQuery) {
-      query = query.where(and(
-        or(
-          eq(inboundPlans.status, 'pending'),
-          eq(inboundPlans.status, 'partially_received')
-        ),
-        or(
-          ilike(products.sku, `%${f.searchQuery}%`),
-          ilike(inboundPlans.supplierName, `%${f.searchQuery}%`)
-        )
+      conditions.push(or(
+        ilike(products.sku, `%${f.searchQuery}%`),
+        ilike(inboundPlans.supplierName, `%${f.searchQuery}%`)
       ));
     }
+
+    const query = db
+      .select({
+        inboundPlan: inboundPlans,
+        product: products,
+        creator: users,
+      })
+      .from(inboundPlans)
+      .leftJoin(products, eq(inboundPlans.productId, products.id))
+      .leftJoin(users, eq(inboundPlans.createdBy, users.id))
+      .where(and(...conditions));
 
     const totalQuery = db
       .select({ count: sql<number>`count(*)` })
@@ -749,7 +728,7 @@ export class DatabaseStorage implements IStorage {
 
     if (operationTypes && operationTypes.length > 0) {
       const validOperationTypes = operationTypes.filter(type => 
-        ['販売', '顧客返品', '出荷指示作成', '在庫確保', '出荷確定', '仕入受入', '棚入れ', '店舗返品送付', '返品受入', '返品検品'].includes(type)
+        ['販売', '顧客返品', '出荷指示作成', '在庫確保', '出荷確定', '仕入受入', '仕入受入・予定対応', '棚入れ', '店舗返品送付', '返品受入', '返品検品'].includes(type)
       ) as OperationType[];
       
       if (validOperationTypes.length > 0) {
@@ -1000,9 +979,8 @@ export class DatabaseStorage implements IStorage {
           productId: product.id,
           plannedQty: replenishQty,
           receivedQty: 0,
-          locationId: product.location.id,
           supplierName: "自動補充システム",
-          dueDate: dueDate.toISOString(),
+          dueDate: dueDate,
           status: 'pending',
           memo: `自動補充：最小在庫(${product.minStock})を下回った商品の補充`,
           createdBy: performedBy
@@ -1055,7 +1033,7 @@ export class DatabaseStorage implements IStorage {
           .from(inboundPlans)
           .where(and(
             eq(inboundPlans.productId, product.id),
-            eq(inboundPlans.dueDate, date.toISOString().split('T')[0]),
+            eq(inboundPlans.dueDate, date),
             eq(inboundPlans.status, 'pending')
           ))
           .limit(1);
@@ -1065,8 +1043,8 @@ export class DatabaseStorage implements IStorage {
             productId: product.id,
             plannedQty: 10,
             receivedQty: 0,
-            supplier: 'デフォルト仕入先',
-            dueDate: date.toISOString().split('T')[0],
+            supplierName: 'デフォルト仕入先',
+            dueDate: date,
             status: 'pending',
             createdBy: 'admin'
           });
