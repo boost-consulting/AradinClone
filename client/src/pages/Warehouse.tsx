@@ -813,23 +813,19 @@ function InboundReceiveForm({ selectedInbound, onSuccess }: InboundFormProps) {
 export default function Warehouse() {
   const [selectedShipment, setSelectedShipment] = useState<any>(null);
   const [selectedInbound, setSelectedInbound] = useState<InboundPlan | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<string>("shipping");
   const { workMode } = useWorkMode();
 
   const handleShipmentSelect = (shipment: any) => {
     setSelectedShipment(shipment);
     setSelectedInbound(undefined);
+    setActiveTab("shipping");
   };
 
   const handleInboundSelect = (plan: InboundPlan) => {
     setSelectedInbound(plan);
     setSelectedShipment(null);
-    // Auto-switch to inbound tab when selecting an inbound plan
-    setTimeout(() => {
-      const inboundTab = document.querySelector('[data-value="inbound"]') as HTMLElement;
-      if (inboundTab) {
-        inboundTab.click();
-      }
-    }, 100);
+    setActiveTab("inbound");
   };
 
   const handleProcessSuccess = () => {
@@ -878,7 +874,7 @@ export default function Warehouse() {
       <Separator />
       
       {/* Lower Section: Processing Forms */}
-      <Tabs defaultValue="shipping" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="shipping">出荷処理</TabsTrigger>
           <TabsTrigger value="inbound">仕入受入</TabsTrigger>
