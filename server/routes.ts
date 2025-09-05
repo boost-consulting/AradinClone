@@ -297,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create shipping instruction
-  app.post("/api/shipping", requireAuth, requireRole('store'), async (req, res) => {
+  app.post("/api/shipping", requireAuth, requireRole('store', 'warehouse'), async (req, res) => {
     try {
       const requestData = { ...req.body, createdBy: req.session.userId };
       const data = insertShippingInstructionSchema.parse(requestData);

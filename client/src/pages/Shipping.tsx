@@ -151,19 +151,24 @@ export default function Shipping() {
   const currentStore = stores.find((s: any) => s.id.toString() === selectedStore);
 
   // Filter alerts for current store
-  const storeAlerts = selectedStore === "all" ? [] : 
+  const storeAlerts = selectedStore === "all" ? 
+    lowStockAlerts || [] :
     lowStockAlerts?.filter(alert => 
       alert.location.id.toString() === selectedStore
     ) || [];
 
   // Filter pending shipments for current store (status = 'pending')
-  const storePendingShipments = selectedStore === "all" ? [] : 
+  const storePendingShipments = selectedStore === "all" ? 
+    completedShipments?.filter(shipment => shipment.status === 'pending') || [] :
     completedShipments?.filter(shipment =>
       shipment.toLocation.name === currentStore?.name && shipment.status === 'pending'
     ) || [];
 
   // Filter confirmed/completed shipments for current store (status = 'confirmed' or 'completed')
-  const storeCompletedShipments = selectedStore === "all" ? [] : 
+  const storeCompletedShipments = selectedStore === "all" ? 
+    completedShipments?.filter(shipment => 
+      shipment.status === 'confirmed' || shipment.status === 'completed'
+    ).slice(0, 20) || [] :
     completedShipments?.filter(shipment =>
       shipment.toLocation.name === currentStore?.name && 
       (shipment.status === 'confirmed' || shipment.status === 'completed')
@@ -291,22 +296,15 @@ export default function Shipping() {
             <CardTitle className="flex items-center space-x-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
               <span>少数アラート（{selectedStore === "all" ? "全店舗" : currentStore?.name}）</span>
-              {selectedStore !== "all" && (
-                <span className="ml-2 bg-destructive/10 text-destructive px-2 py-1 rounded text-xs font-normal">
-                  {storeAlerts.length}件
-                </span>
-              )}
+              <span className="ml-2 bg-destructive/10 text-destructive px-2 py-1 rounded text-xs font-normal">
+                {storeAlerts.length}件
+              </span>
             </CardTitle>
             <CardDescription>下限在庫を下回った商品</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {selectedStore === "all" ? (
-                <div className="flex flex-col items-center py-6 text-muted-foreground">
-                  <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-center">店舗を選択してください</p>
-                </div>
-              ) : storeAlerts.length > 0 ? (
+              {storeAlerts.length > 0 ? (
                 storeAlerts.map((alert) => (
                   <div 
                     key={`${alert.product.id}-${alert.location.id}`}
@@ -318,6 +316,11 @@ export default function Shipping() {
                     <div className="text-sm text-muted-foreground">
                       {alert.product.modelName} - {alert.product.color} - {alert.product.size}
                     </div>
+                    {selectedStore === "all" && (
+                      <div className="text-sm font-medium text-blue-600">
+                        店舗: {alert.location.name}
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm mt-2">
                       <span>現在庫: <span className="font-bold text-destructive">{alert.currentStock}</span></span>
                       <span>下限: {alert.minStock}</span>
@@ -350,12 +353,7 @@ export default function Shipping() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {selectedStore === "all" ? (
-                <div className="flex flex-col items-center py-6 text-muted-foreground">
-                  <Package className="h-8 w-8 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-center">店舗を選択してください</p>
-                </div>
-              ) : storePendingShipments.length > 0 ? (
+              {storePendingShipments.length > 0 ? (
                 storePendingShipments.map((shipment) => (
                   <div 
                     key={shipment.id}
