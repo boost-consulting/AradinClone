@@ -8,7 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/AuthContext";
-import { Search, ShoppingCart, Percent, JapaneseYen } from "lucide-react";
+import { useWorkMode } from "@/lib/workMode";
+import { Search, ShoppingCart, Percent, JapaneseYen, Lock } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InventoryStatusBadge } from "@/components/InventoryStatusBadge";
 import { InventoryState } from "@/lib/types";
 
@@ -32,6 +34,7 @@ export default function Sales() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { canPerform } = useWorkMode();
   
   // Queries - locations must be first
   const { data: locations } = useQuery<any[]>({
@@ -75,6 +78,9 @@ export default function Sales() {
   // Mutations
   const recordSaleMutation = useMutation({
     mutationFn: async (data: any) => {
+      if (!canPerform('canSell')) {
+        throw new Error('作業モードを店舗に切り替えてください');
+      }
       await apiRequest("POST", "/api/sales", data);
     },
     onSuccess: () => {
@@ -139,6 +145,15 @@ export default function Sales() {
 
   const handleSaleSubmit = async () => {
     try {
+      if (!canPerform('canSell')) {
+        toast({
+          title: "権限エラー",
+          description: "作業モードを店舗に切り替えてください",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const selectedProduct = products?.find((p: any) => p.sku === salesForm.sku);
       const saleAmount = calculateSaleAmount();
       
@@ -421,14 +436,28 @@ export default function Sales() {
               </div>
             )}
 
-            <Button 
-              onClick={handleSaleSubmit}
-              disabled={recordSaleMutation.isPending || !salesForm.sku || !salesForm.quantity}
-              className="w-full"
-              data-testid="button-register-sale"
-            >
-              販売を登録
-            </Button>
+            {canPerform('canSell') ? (
+              <Button 
+                onClick={handleSaleSubmit}
+                disabled={recordSaleMutation.isPending || !salesForm.sku || !salesForm.quantity}
+                className="w-full"
+                data-testid="button-register-sale"
+              >
+                販売を登録
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button disabled variant="outline" className="w-full">
+                    <Lock className="h-4 w-4 mr-2" />
+                    販売を登録
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>作業モードを店舗に切り替えてください</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </CardContent>
         </Card>
       </div>
