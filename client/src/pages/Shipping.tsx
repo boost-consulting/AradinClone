@@ -364,6 +364,11 @@ export default function Shipping() {
                     <div className="text-sm text-muted-foreground">
                       数量: {shipment.quantity}点
                     </div>
+                    {selectedStore === "all" && (
+                      <div className="text-sm font-medium text-blue-600">
+                        宛先: {shipment.toLocation.name}
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground">
                       希望日: {shipment.requestedDate ? format(new Date(shipment.requestedDate), 'yyyy/M/d') : '未設定'}
                     </div>
