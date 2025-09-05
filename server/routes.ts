@@ -34,7 +34,23 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.role || !roles.includes(req.session.role)) {
-      return res.status(403).json({ message: "Insufficient permissions" });
+      // Generate helpful Japanese error message
+      let requiredMode = "";
+      if (roles.includes('store') && roles.includes('warehouse')) {
+        requiredMode = "店舗または倉庫";
+      } else if (roles.includes('store')) {
+        requiredMode = "店舗";
+      } else if (roles.includes('warehouse')) {
+        requiredMode = "倉庫";
+      } else if (roles.includes('admin')) {
+        requiredMode = "管理者";
+      }
+      
+      const message = requiredMode 
+        ? `作業モードを${requiredMode}に切り替えてください` 
+        : "権限が不足しています";
+        
+      return res.status(403).json({ message });
     }
     next();
   };
@@ -297,7 +313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create shipping instruction
-  app.post("/api/shipping", requireAuth, requireRole('store', 'warehouse'), async (req, res) => {
+  app.post("/api/shipping", requireAuth, requireRole('store'), async (req, res) => {
     try {
       const requestData = { ...req.body, createdBy: req.session.userId };
       const data = insertShippingInstructionSchema.parse(requestData);
@@ -546,7 +562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Sales
-  app.post("/api/sales", requireAuth, async (req, res) => {
+  app.post("/api/sales", requireAuth, requireRole('store'), async (req, res) => {
     try {
       const data = saleSchema.parse(req.body);
       const performedBy = req.session.userId!;
@@ -574,7 +590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Store return shipment (reduction-only operation)
-  app.post("/api/returns/ship", requireAuth, async (req, res) => {
+  app.post("/api/returns/ship", requireAuth, requireRole('store'), async (req, res) => {
     try {
       const data = reductionOnlySchema.parse(req.body);
       const performedBy = req.session.userId!;
@@ -605,7 +621,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Customer returns (increases inventory)
-  app.post("/api/returns/customer", requireAuth, async (req, res) => {
+  app.post("/api/returns/customer", requireAuth, requireRole('store'), async (req, res) => {
     try {
       const data = adjustInventorySchema.parse(req.body);
       const performedBy = req.session.userId!;
