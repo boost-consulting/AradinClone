@@ -66,6 +66,7 @@ export default function Shipping() {
     quantity: "",
     requestedDate: "",
     memo: "",
+    toLocationId: "", // 配送先店舗ID
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -179,12 +180,14 @@ export default function Shipping() {
       const selectedProduct = products?.find((p: any) => p.sku === shippingForm.sku);
       const warehouseLocation = warehouses[0]; // Assume first warehouse
       
+      const targetStore = stores.find((s: any) => s.id.toString() === shippingForm.toLocationId);
+
       // Debug logging
       console.log("Debug - Form data:", {
         sku: shippingForm.sku,
         quantity: shippingForm.quantity,
         selectedProduct: selectedProduct,
-        currentStore: currentStore,
+        targetStore: targetStore,
         warehouseLocation: warehouseLocation,
         warehouses: warehouses
       });
@@ -192,8 +195,8 @@ export default function Shipping() {
       if (!selectedProduct) {
         throw new Error("商品が見つかりません。SKUを確認してください。");
       }
-      if (!currentStore) {
-        throw new Error("店舗が選択されていません。");
+      if (!targetStore) {
+        throw new Error("配送先店舗が選択されていません。");
       }
       if (!warehouseLocation) {
         throw new Error("倉庫が見つかりません。");
@@ -211,7 +214,7 @@ export default function Shipping() {
       await createShippingMutation.mutateAsync({
         productId: selectedProduct.id,
         fromLocationId: warehouseLocation.id,
-        toLocationId: currentStore.id,
+        toLocationId: targetStore.id,
         quantity: parseInt(shippingForm.quantity),
         requestedDate: formattedRequestedDate,
         memo: shippingForm.memo || null,
@@ -222,6 +225,7 @@ export default function Shipping() {
         quantity: "",
         requestedDate: "",
         memo: "",
+        toLocationId: "",
       });
       setFormErrors({});
       
@@ -269,6 +273,7 @@ export default function Shipping() {
       quantity: recommendedQuantity.toString(),
       requestedDate: "",
       memo: `少数アラートによる補充要求（現在庫: ${alert.currentStock}、基準: ${alert.targetStock}）`,
+      toLocationId: alert.location.id.toString(),
     });
   };
 
@@ -457,7 +462,7 @@ export default function Shipping() {
           <CardDescription>新しい出荷指示を作成します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="space-y-2">
               <Label htmlFor="shipping-sku">SKU</Label>
               <Select 
@@ -485,6 +490,25 @@ export default function Shipping() {
                   {products?.map((product: any) => (
                     <SelectItem key={product.id} value={product.sku}>
                       {product.sku} - {product.modelName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shipping-destination">配送先店舗</Label>
+              <Select 
+                value={shippingForm.toLocationId} 
+                onValueChange={(value) => setShippingForm(prev => ({ ...prev, toLocationId: value }))}
+              >
+                <SelectTrigger data-testid="select-shipping-destination">
+                  <SelectValue placeholder="店舗を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores?.map((store: any) => (
+                    <SelectItem key={store.id} value={store.id.toString()}>
+                      {store.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -547,7 +571,7 @@ export default function Shipping() {
           <div className="flex justify-end">
             <Button 
               onClick={handleCreateShipping}
-              disabled={createShippingMutation.isPending || !shippingForm.sku || !shippingForm.quantity}
+              disabled={createShippingMutation.isPending || !shippingForm.sku || !shippingForm.quantity || !shippingForm.toLocationId}
               data-testid="button-create-shipping"
             >
               出荷指示を作成
