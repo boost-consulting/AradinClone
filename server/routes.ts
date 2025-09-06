@@ -117,9 +117,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.session.storeId = undefined;
       } else {
         // Switch to store user for specified store
-        req.session.userId = `store_user_${storeId}`;
+        const storeUserId = `store_user_${storeId}`;
+        req.session.userId = storeUserId;
         req.session.role = 'store';
         req.session.storeId = storeId;
+        
+        // Ensure store user exists in database
+        try {
+          const existingUser = await storage.getUser(storeUserId);
+          if (!existingUser) {
+            // Direct SQL insert to specify the ID
+            await db.insert(users).values({
+              id: storeUserId,
+              username: `Store User ${storeId}`,
+              role: 'store',
+              password: 'placeholder',
+              storeId: storeId
+            }).onConflictDoNothing();
+          }
+        } catch (error) {
+          console.error('Failed to create store user:', error);
+        }
       }
 
       await new Promise<void>((resolve, reject) => {
