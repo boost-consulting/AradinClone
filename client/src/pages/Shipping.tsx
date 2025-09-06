@@ -179,8 +179,24 @@ export default function Shipping() {
       const selectedProduct = products?.find((p: any) => p.sku === shippingForm.sku);
       const warehouseLocation = warehouses[0]; // Assume first warehouse
       
-      if (!selectedProduct || !currentStore || !warehouseLocation) {
-        throw new Error("必要な情報が不足しています");
+      // Debug logging
+      console.log("Debug - Form data:", {
+        sku: shippingForm.sku,
+        quantity: shippingForm.quantity,
+        selectedProduct: selectedProduct,
+        currentStore: currentStore,
+        warehouseLocation: warehouseLocation,
+        warehouses: warehouses
+      });
+      
+      if (!selectedProduct) {
+        throw new Error("商品が見つかりません。SKUを確認してください。");
+      }
+      if (!currentStore) {
+        throw new Error("店舗が選択されていません。");
+      }
+      if (!warehouseLocation) {
+        throw new Error("倉庫が見つかりません。");
       }
 
       // Clear previous errors
