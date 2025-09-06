@@ -181,16 +181,6 @@ export default function Shipping() {
       const warehouseLocation = warehouses[0]; // Assume first warehouse
       
       const targetStore = stores.find((s: any) => s.id.toString() === shippingForm.toLocationId);
-
-      // Debug logging
-      console.log("Debug - Form data:", {
-        sku: shippingForm.sku,
-        quantity: shippingForm.quantity,
-        selectedProduct: selectedProduct,
-        targetStore: targetStore,
-        warehouseLocation: warehouseLocation,
-        warehouses: warehouses
-      });
       
       if (!selectedProduct) {
         throw new Error("商品が見つかりません。SKUを確認してください。");
