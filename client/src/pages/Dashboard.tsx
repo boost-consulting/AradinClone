@@ -243,7 +243,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {lowStockAlerts && lowStockAlerts.length > 0 ? (
-                    lowStockAlerts.map((alert, index) => (
+                    lowStockAlerts.slice(0, 5).map((alert, index) => (
                       <tr key={`alert-table-${alert.product.id}-${alert.location.id}-${index}`} className="table-hover cursor-pointer bg-red-50" data-testid={`row-alert-${alert.product.sku}-${alert.location.id}-${index}`}>
                         <td className="px-4 py-3 text-sm font-medium">{alert.product.sku}</td>
                         <td className="px-4 py-3 text-sm">{alert.location.name}</td>
