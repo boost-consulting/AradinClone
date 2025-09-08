@@ -516,6 +516,7 @@ export default function Shipping() {
                 type="date"
                 value={shippingForm.requestedDate}
                 onChange={(e) => setShippingForm(prev => ({ ...prev, requestedDate: e.target.value }))}
+                placeholder="年/月/日"
                 data-testid="input-shipping-date"
               />
             </div>
