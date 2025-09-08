@@ -200,8 +200,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Auto-login for demo purposes
     if (!req.session.userId) {
       try {
-        // Default to store_user for demo
-        const user = await storage.getUserByUsername("store_user");
+        // Default to store_user_1 for demo
+        const user = await storage.getUserByUsername("store_user_1");
         if (user) {
           req.session.userId = user.id;
           req.session.role = user.role;
