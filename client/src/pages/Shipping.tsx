@@ -517,6 +517,7 @@ export default function Shipping() {
                 value={shippingForm.requestedDate}
                 onChange={(e) => setShippingForm(prev => ({ ...prev, requestedDate: e.target.value }))}
                 placeholder="年/月/日"
+                className="[&::-webkit-datetime-edit-text]:text-muted-foreground [&::-webkit-datetime-edit]:flex [&::-webkit-datetime-edit]:items-center [&::-webkit-datetime-edit]:h-full"
                 data-testid="input-shipping-date"
               />
             </div>
