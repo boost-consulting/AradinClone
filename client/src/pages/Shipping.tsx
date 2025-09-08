@@ -386,17 +386,6 @@ export default function Shipping() {
                     <div className="text-xs text-muted-foreground">
                       作成: {format(new Date(shipment.createdAt), 'M/d HH:mm')}
                     </div>
-                    <div className="mt-2">
-                      <Button
-                        size="sm"
-                        onClick={() => confirmShippingMutation.mutate(shipment.id)}
-                        disabled={confirmShippingMutation.isPending}
-                        className="w-full"
-                        data-testid={`button-confirm-shipment-${shipment.id}`}
-                      >
-                        {confirmShippingMutation.isPending ? "処理中..." : "出荷実行"}
-                      </Button>
-                    </div>
                   </div>
                 ))
               ) : (
