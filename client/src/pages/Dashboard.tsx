@@ -267,7 +267,7 @@ export default function Dashboard() {
               </table>
             </div>
             <div className="pt-4 border-t border-border mt-4">
-              <Link href="/warehouse">
+              <Link href="/shipping">
                 <Button variant="link" className="text-sm p-0" data-testid="button-view-all-alerts">
                   在庫補充ページへ <ArrowRight className="ml-1 h-3 w-3" />
                 </Button>
